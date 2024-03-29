@@ -4,28 +4,82 @@ title: "The Law of Demeter"
 subtitle: "Simplifying Object Communication"
 date: 2024-02-10 12:00:00
 timezone: Europe/Madrid
-background: '/img/posts/01.jpg'
+background: "/img/posts/01.jpg"
 ---
 
 <h1>The Law of Demeter</h1>
 
 <h2>Simplifying Object Communication</h2>
 
-<p>The Law of Demeter, also known as the Principle of least knowledge, is a software design principle that promotes encapsulation and reduces coupling between objects. This principle states that an object should have limited knowledge about other objects and should only communicate with its "closest" friends. In simpler terms, an object should not have to "know" too much about the internal structure of other objects to perform its function.</p>
+<p>
+  The Law of Demeter, also known as the Principle of least knowledge, is a
+  software design principle that promotes encapsulation and reduces coupling
+  between objects. This principle states that an object should have limited
+  knowledge about other objects and should only communicate with its "closest"
+  friends. In simpler terms, an object should not have to "know" too much about
+  the internal structure of other objects to perform its function.
+</p>
 
 <h2>What is the Law of Demeter?</h2>
 
 <p>The Law of Demeter can be expressed as follows:</p>
 
 <blockquote>
-  <p>"An object should have access only to its own fields, the parameters it receives in its method calls, objects it creates internally, and objects passed in as method arguments."</p>
+  <p>
+    "An object should have access only to its own fields, the parameters it
+    receives in its method calls, objects it creates internally, and objects
+    passed in as method arguments."
+  </p>
 </blockquote>
 
-<p>This means that an object should not navigate through a chain of calls to interact with indirectly related objects. Instead, it should delegate that responsibility to closer objects.</p>
+<p>
+  This means that an object should not navigate through a chain of calls to
+  interact with indirectly related objects. Instead, it should delegate that
+  responsibility to closer objects.
+</p>
 
 <h2>Implementation</h2>
 
 <p>In this case I am going to show the example in Typescript:</p>
+
+<pre><code class="language-typescript">
+  class Person {
+    private name: string;
+    private address: Address;
+  
+    constructor(name: string, address: Address) {
+      this.name = name;
+      this.address = address;
+    }
+  
+    getName(): string {
+      return this.name;
+    }
+  
+    getAddress(): Address {
+      return this.address;
+    }
+  }
+  
+  class Address {
+    private street: string;
+  
+    constructor(street: string) {
+      this.street = street;
+    }
+  
+    getStreet(): string {
+      return this.street;
+    }
+  }
+  
+  const address = new Address('Main Street');
+  const person = new Person('John', address);
+  
+  console.log(person.getAddress.getStreet());
+  </code></pre>
+
+In this case we are breaking the law of demeter, to fix it:
 
 <pre><code class="language-typescript">
 class Person {
@@ -41,7 +95,7 @@ class Person {
     return this.name;
   }
 
-  getStreetAddress(): Address {
+  getStreet(): Address {
     return this.address.getStreet();
   }
 }
@@ -61,19 +115,35 @@ class Address {
 const address = new Address('Main Street');
 const person = new Person('John', address);
 
-console.log(person.getStreetAddress());
+console.log(person.getStreet());
 </code></pre>
 
-<p>As we can see, we get the street from a method called getStreetAddress, this internally call a getAdress method from Address class.</p>
+<p>
+  As we can see, we get the street from a method called getStreet from the
+  Person class; this internally calls a getStreet method from the Address class.
+</p>
 
 <h2>Benefits of the Law of Demeter</h2>
 
 <ol>
-  <li><strong>Decoupling:</strong> By following the Law of Demeter, coupling between objects is reduced, making code maintenance and modification easier.</li>
-  <li><strong>Encapsulation:</strong> Data encapsulation is promoted by limiting direct access to other objects' fields.</li>
-  <li><strong>Readability:</strong> Code becomes more readable and understandable since dependencies between objects are reduced, and clearer and more direct communication is encouraged.</li>
+  <li>
+    <strong>Decoupling:</strong> By following the Law of Demeter, coupling
+    between objects is reduced, making code maintenance and modification easier.
+  </li>
+  <li>
+    <strong>Encapsulation:</strong> Data encapsulation is promoted by limiting
+    direct access to other objects' fields.
+  </li>
+  <li>
+    <strong>Readability:</strong> Code becomes more readable and understandable
+    since dependencies between objects are reduced, and clearer and more direct
+    communication is encouraged.
+  </li>
 </ol>
 
 <h2>Conclusion</h2>
 
-<p>By following the Law of Demeter your code will be more modular and flexible, leading to a more robust and maintainable software design.</p>
+<p>
+  By following the Law of Demeter your code will be more modular and flexible,
+  leading to a more robust and maintainable software design.
+</p>
