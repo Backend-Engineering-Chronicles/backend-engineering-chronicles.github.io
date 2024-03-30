@@ -1,0 +1,105 @@
+---
+layout: post
+title: "Tell don't ask"
+subtitle: "Improve Code Readability and Maintainability with Tell Don't Ask"
+date: 2024-03-30 12:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Tell don't ask</h1>
+
+<h2>Improve Code Readability and Maintainability with Tell Don't Ask</h2>
+
+<p>
+  You've likely encountered code that asks too much about an object's state
+  before doing something. This is a common issue in software development and can
+  lead to code that is difficult to understand and maintain. However, there's a
+  solution: the "Tell Don't Ask" principle.
+</p>
+
+<p>
+  This principle refers to the practice of avoiding explicit questions about an
+  object's state before making a decision. Instead, you tell the object what to
+  do and let it handle its own internal state.
+</p>
+
+<h3>Let's look at an example:</h3>
+
+<p>
+  Suppose we're working on an employee management system and we have an Employee
+  class with a getSalary() method that returns the employee's salary:
+</p>
+
+<pre><code class="language-typescript">
+    class Employee {
+        private salary: number;
+      
+        constructor(salary: number) {
+          this.salary = salary;
+        }
+      
+        getSalary(): number {
+          return this.salary;
+        }
+
+        setSalary(amount: number): number {
+          this.salary = amount
+        }
+    }
+  </code></pre>
+
+<p>
+  Now, imagine we want to increase an employee's salary by 10%. We could do it
+  in two ways: by asking for the employee's current salary and then applying the
+  increase, or simply telling the employee to increase their salary. The first
+  option it's like this:
+</p>
+
+<pre><code class="language-typescript">
+    const employee = new Employee(3000);
+    if (employee.getSalary() < 5000) {
+      const newSalary = employee.getSalary() * 1.1;
+      employee.setSalary(newSalary);
+    }
+</code></pre>
+
+<p>
+  This code is breaking the "Tell Don't Ask" principle because the object is not
+  handling its own state as it should. To adhere to the principle, we would need
+  to modify the code as follows to just tell the object to increse the salary:
+</p>
+
+<pre><code class="language-typescript">
+    const employee = new Employee(3000);
+    employee.increaseSalary(0.1);
+</code></pre>
+
+<pre><code class="language-typescript">
+    class Employee {
+        private salary: number;
+    
+        constructor(salary: number) {
+            this.salary = salary;
+        }
+        
+        increaseSalary(amount: number): void {
+            if (this.salary < 5000) {
+                const newSalary = this.salary * 1.1;
+                this.salary = newSalary
+            }
+        }
+    }
+</code></pre>
+
+<p>
+  Instead of asking the object for its state and then making an external
+  decision, we simply tell the object what to do, and it handles its own state
+  according to internal logic.
+</p>
+
+<p>
+  Following the "Tell Don't Ask" principle, we can write clearer, more concise,
+  and maintainable code. This promotes better separation of concerns and
+  facilitates code scalability and evolution over time.
+</p>
