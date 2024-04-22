@@ -54,10 +54,12 @@ background: '/img/posts/01.jpg'
 
 <p>For example, from the controller, to the application, and then to the domain.</p>
 
-<p>This school follows an approach where we have larger test units, where child classes are tested indirectly, and infrastructure is mocked. That's why testing behavior rather than implementation details is encouraged here. This last one is very important. </p>
+<p>This school follows an approach where we have larger test units, where child classes are tested indirectly (sometimes , and infrastructure is mocked. That's why testing behavior rather than implementation details is encouraged here. This last one is very important. </p>
+
+<p>Adding most of your tests is encouraged, as long as it makes sense, in the main class, and if it doesn't fit, specific tests are added in the child classes. The important thing is to add the test where it actually occurs.</p>
 
 <p>
-The idea is avoid early abstractions and YAGNI. It's about discovering the domain and letting the domain ask for what it needs. Basically, code what you have to do.
+The idea of this approach is avoid early abstractions and YAGNI. It's about discovering the domain and letting the domain ask for what it needs. Basically, code what you have to do.
 </p>
 
 <h4>When to use Outside-In</h4>
