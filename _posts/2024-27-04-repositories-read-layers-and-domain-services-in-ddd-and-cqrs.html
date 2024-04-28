@@ -20,13 +20,15 @@ background: "/img/posts/01.jpg"
 <p>Having an Order aggregate</p>
 
 <pre><code class="language-typescript">
-class Order {
-    id: string;
+class Order extends AggregateRoot {
+    id: OrderId;
     items: OrderItem[];
   
-    constructor(id: string, items: OrderItem[]) {
+    constructor(id: OrderId, items: OrderItem[]) {
       this.id = id;
       this.items = items;
+
+      super()
     }
   
     //…
@@ -37,7 +39,7 @@ class Order {
 
 <pre><code class="language-typescript">
 interface OrderRepository {
-    getById(id: string): Order | undefined;
+    getById(id: OrderId): Order | undefined;
     save(order: Order): void;
     // …
   }
@@ -48,6 +50,8 @@ interface OrderRepository {
 <h3>Read layers</h3>
 
 <p>This CQRS concept is basically a way to obtain data for a CQRS Query, which can be built on top of the domain model using the write model. It lives in the application layer with the queries and is optimized query models; it can be used as an intermediate step to have projections or to query projections as well.</p>
+
+<p>An example could be:</p>
 
 <pre><code class="language-typescript">
 interface FindSuggestionsTermReadLayer {
@@ -73,35 +77,32 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
 }
 </code></pre>
 
-<p>The query response can return what the read layer returns since they are also primitives. They are optimized for queries. Then the implementation will query the persistence system and return the object optimized for reading.</p>
+<p>The query response can return what the read layer returns since they are also primitives. They are optimized for queries. Then the implementation will query the persistence system and return the object optimized for the read model.</p>
 
 <h3>Domain services</h3>
 
-<p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a VO or in the aggregate. Sometimes a tendency is to create a static method in the aggregate, but that is a smell that it has to be a domain service. It is important to name the services using the ubiquitous language as well.</p>
+<p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a VO or in the aggregate. Sometimes a tendency is to create a static method in the aggregate, but that is a smell that it has to be a domain service.</p> 
+<p>It is important to name the services using the ubiquitous language as well.</p>
+
+<p>Example:</p>
 
 <pre><code class="language-typescript">
 class OrderProcessor {
-    private orderRepository: OrderRepository;
-    private emailService: EmailService;
+    constructor(private readonly orderRepository: OrderRepository, private readonly emailService: EmailService) {}
   
-    constructor(orderRepository: OrderRepository, emailService: EmailService) {
-      this.orderRepository = orderRepository;
-      this.emailService = emailService;
-    }
-  
-    processOrder(orderId: string): void {
+    async processOrder(orderId: OrderId): Promise<void> {
       const order = this.orderRepository.getById(orderId);
   
       if (!order) {
-        throw new Error('Order not found');
+        throw new OrderNotFound(orderId);
       }
   
       order.process();
-      this.orderRepository.save(order);
+      await this.orderRepository.save(order);
   
       const customerEmail = order.customerEmail;
-      const message = `Hello ${order.customerName}! your order with ID ${order.id} has been processed correctly.`;
-      this.emailService.sendEmail(customerEmail, 'Confirm order', message);
+      const message = `Hello ${order.customerName}! your order with ID ${order.id.toString()} has been processed correctly.`;
+      void this.emailService.sendEmail(customerEmail, 'Confirm order', message);
     }
   }
 </code></pre>
@@ -119,5 +120,5 @@ interface EmailService {
 <p>In summary,</p>
 
 <p>Repositories are only for aggregates. </p>
-<p>If you need to make optimized queries for the reading system in a query, a read layer is what you are looking for.</p>
+<p>If you need to make optimized queries for the read model in a query, a read layer is what you are looking for.</p>
 <p>If you need to implement domain logic that doesn't fit into aggregates or VOs, a domain service is what you need, although there may also be domain services that end up being implemented in infrastructure.</p>
