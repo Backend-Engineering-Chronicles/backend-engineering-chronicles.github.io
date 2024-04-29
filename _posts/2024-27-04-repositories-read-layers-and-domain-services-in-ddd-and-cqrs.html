@@ -1,0 +1,124 @@
+---
+layout: post
+title: "Repositories, read layer, domain services in DDD and CQRS"
+subtitle: "Differences between each one"
+date: 2024-04-24 10:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Repositories, read layer, domain services in DDD and CQRS</h1>
+
+<h2>Differences between each one</h2>
+
+<p>In this article, I would like to talk about the topics mentioned in the title. You might wonder why this title, mixing DDD building blocks and CQRS concepts. Well, the answer is somewhat related to my personal experience working in DDD environments with CQRS, where I see concepts being mixed. For example, repositories are used when they should be domain services or read layers, etc.</p>
+
+<h3>Repositories</h3>
+
+<p>Repositories should only be used for aggregates, as it is the way to access and persist them. Example:</p>
+
+<p>Having an Order aggregate</p>
+
+<pre><code class="language-typescript">
+class Order extends AggregateRoot {
+    id: OrderId;
+    items: OrderItem[];
+  
+    constructor(id: OrderId, items: OrderItem[]) {
+      this.id = id;
+      this.items = items;
+
+      super()
+    }
+  
+    //…
+  }
+</code></pre>
+
+<p>Its repository should be something like this:</p>
+
+<pre><code class="language-typescript">
+interface OrderRepository {
+    getById(id: OrderId): Order | undefined;
+    save(order: Order): void;
+    // …
+  }
+</code></pre>
+
+<p>Repositories in DDD are the storage location to persist and retrieve aggregates. Only aggregates have repositories, and from the domain perspective, they are collections of aggregates. They have to respect the ubiquitous language since they are in the domain.</p>
+
+<h3>Read layers</h3>
+
+<p>This CQRS concept is basically a way to obtain data for a CQRS Query, which can be built on top of the domain model using the write model. It lives in the application layer with the queries and is optimized query models; it can be used as an intermediate step to have projections or to query projections as well.</p>
+
+<p>An example could be:</p>
+
+<pre><code class="language-typescript">
+interface FindSuggestionsTermReadLayer {
+  find(userId: UserId): Promise<TermView[]>;
+}
+</code></pre>
+
+<p>The query handler would be:</p>
+
+<pre><code class="language-typescript">
+@QueryHandler(FindSuggestionsTermQuery)
+export default class FindSuggestionsTermQueryHandler implements IQueryHandler<FindSuggestionsTermQuery> {
+  constructor(
+    @Inject(FIND_SUGGESTIONS_TERM_READ_LAYER)
+    private readonly findSuggestionTermReadLayer: FindSuggestionsTermReadLayer,
+  ) {}
+
+  async execute(query: FindSuggestionsTermQuery): Promise<QueryResponse> {
+    const user = UserId.of(query.userId);
+    const terms = await this.findSuggestionTermReadLayer.find(user);
+    return FindSuggestionsTermQueryResponse.fromTerms(terms);
+  }
+}
+</code></pre>
+
+<p>The query response can return what the read layer returns since they are also primitives. They are optimized for queries. Then the implementation will query the persistence system and return the object optimized for the read model.</p>
+
+<h3>Domain services</h3>
+
+<p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a VO or in the aggregate. Sometimes a tendency is to create a static method in the aggregate, but that is a smell that it has to be a domain service.</p> 
+<p>It is important to name the services using the ubiquitous language as well.</p>
+
+<p>Example:</p>
+
+<pre><code class="language-typescript">
+class OrderProcessor {
+    constructor(private readonly orderRepository: OrderRepository, private readonly emailService: EmailService) {}
+  
+    async processOrder(orderId: OrderId): Promise<void> {
+      const order = this.orderRepository.getById(orderId);
+  
+      if (!order) {
+        throw new OrderNotFound(orderId);
+      }
+  
+      order.process();
+      await this.orderRepository.save(order);
+  
+      const customerEmail = order.customerEmail;
+      const message = `Hello ${order.customerName}! your order with ID ${order.id.toString()} has been processed correctly.`;
+      void this.emailService.sendEmail(customerEmail, 'Confirm order', message);
+    }
+  }
+</code></pre>
+
+<p>Sometimes we also have domain interfaces that are domain services like emailService. Since it is part of the domain to send an email when an order is processed.</p>
+
+<pre><code class="language-typescript">
+interface EmailService {
+    sendEmail(to: string, subject: string, body: string): void;
+  }
+</code></pre>
+
+<p>Where in infrastructure, its implementation implements sending the email.</p>
+
+<p>In summary,</p>
+
+<p>Repositories are only for aggregates. </p>
+<p>If you need to make optimized queries for the read model in a query, a read layer is what you are looking for.</p>
+<p>If you need to implement domain logic that doesn't fit into aggregates or VOs, a domain service is what you need, although there may also be domain services that end up being implemented in infrastructure.</p>
