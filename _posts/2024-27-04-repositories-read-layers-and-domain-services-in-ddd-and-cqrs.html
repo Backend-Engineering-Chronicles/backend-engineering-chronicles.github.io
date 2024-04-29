@@ -106,7 +106,7 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
   }
 </code></pre>
 
-<p>Sometimes we also have domain interfaces that are domain services like emailService. Since it is part of the domain to send an email when an order is processed.</p>
+<p>Sometimes, we also have domain interfaces such as emailService, which function as domain services. Since sending an email when an order is processed is considered part of the domain – according to discussions with domain experts – we need to implement it within the domain, using an interface.</p>
 
 <pre><code class="language-typescript">
 interface EmailService {
