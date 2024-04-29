@@ -87,22 +87,21 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
 <p>Example:</p>
 
 <pre><code class="language-typescript">
-class OrderProcessor {
-    constructor(private readonly orderRepository: OrderRepository, private readonly emailService: EmailService) {}
+  class OrderProcessor {
+    constructor(private readonly orderRepository: OrderRepository, private readonly discountRepository: DiscountRepository) {}
   
     async processOrder(orderId: OrderId): Promise<void> {
-      const order = this.orderRepository.getById(orderId);
+      const order = await this.orderRepository.getById(orderId);
   
       if (!order) {
         throw new OrderNotFound(orderId);
       }
   
-      order.process();
-      await this.orderRepository.save(order);
+      const applicableDiscounts = await this.discountRepository.getApplicableDiscountsFromOrder(order);
   
-      const customerEmail = order.customerEmail;
-      const message = `Hello ${order.customerName}! your order with ID ${order.id.toString()} has been processed correctly.`;
-      void this.emailService.sendEmail(customerEmail, 'Confirm order', message);
+      order.applyDiscounts(applicableDiscounts);
+      
+      await void this.orderRepository.save(order);
     }
   }
 </code></pre>
