@@ -81,7 +81,9 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
 
 <h3>Domain services</h3>
 
-<p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a VO or in the aggregate. Sometimes a tendency is to create a static method in the aggregate, but that is a smell that it has to be a domain service.</p> 
+<p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a Value Object (VO) or in the aggregate. Sometimes there is a tendency to create a static method in the aggregate, but that is a sign that it should be a domain service.</p> 
+<p>Before creating a domain service, keep in mind this heuristic: if the logic could be in a VO or in the aggregate, put it there.</p>
+<p>Another case for creating a domain service is when you have an interface in the domain to send an email or something that needs to be implemented in the infrastructure.</p>
 <p>It is important to name the services using the ubiquitous language as well.</p>
 
 <p>Example:</p>
