@@ -83,7 +83,7 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
 
 <p>A domain service is an operation that fulfills a domain task. An indicator that a domain service needs to be created is when that logic cannot go in a Value Object (VO) or in the aggregate. Sometimes there is a tendency to create a static method in the aggregate, but that is a sign that it should be a domain service.</p> 
 <p>Before creating a domain service, keep in mind this heuristic: if the logic could be in a VO or in the aggregate, put it there.</p>
-<p>Another case for creating a domain service is when you have an interface in the domain to send an email or something that needs to be implemented in the infrastructure.</p>
+<p>Another case for creating a domain service is when you have an interface in the domain to send an email or something that needs to be implemented in the infrastructure layer.</p>
 <p>It is important to name the services using the ubiquitous language as well.</p>
 
 <p>Example:</p>
@@ -108,7 +108,7 @@ export default class FindSuggestionsTermQueryHandler implements IQueryHandler<Fi
   }
 </code></pre>
 
-<p>Sometimes, we also have domain interfaces such as emailService, which function as domain services. Since sending an email when an order is processed is considered part of the domain – according to discussions with domain experts – we need to implement it within the domain, using an interface.</p>
+<p>As I mentioned before, sometimes we also have domain interfaces such as emailService, which function as domain services. Since sending an email when an order is processed is considered part of the domain – according to discussions with domain experts – we need to implement it within the domain, using an interface.</p>
 
 <pre><code class="language-typescript">
 interface EmailService {
