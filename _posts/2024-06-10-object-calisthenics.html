@@ -1,0 +1,264 @@
+---
+layout: post
+title: "Object Calisthenics"
+subtitle: "Improve your code with Object Calisthenics"
+date: 2024-03-30 10:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Object Calisthenics</h1>
+
+<h2>Improve your code with Object Calisthenics</h2>
+
+<p>
+  Object Calisthenics is a set of rules designed to encourage writing cleaner
+  and more maintainable object-oriented code. These rules were originally
+  proposed by Jeff Bay in "The ThoughtWorks Anthology".
+</p>
+<p>
+  These restrictions are intended to instill good practices when writing
+  object-oriented code, aiding in the creation of higher-quality code and
+  helping to identify the characteristics of well-designed code.
+</p>
+
+<ol>
+  <li>Only One Level of Indentation per Method</li>
+  <li>Don’t Use the <code>else</code> Keyword</li>
+  <li>Wrap All Primitives and Collections in Classes</li>
+  <li>First Class Collections</li>
+  <li>One Dot per Line</li>
+  <li>Don’t Abbreviate</li>
+  <li>Keep All Entities Small</li>
+  <li>No Classes with More Than Two Instance Variables</li>
+  <li>No Getters/Setters/Properties</li>
+</ol>
+
+<h3>1. Only One Level of Indentation per Method</h3>
+
+<p>
+  Limiting yourself to one level of indentation per method encourages short and
+  easy-to-understand methods.
+</p>
+
+<pre><code class="language-typescript">
+class OrderProcessor {
+    processOrder(order: Order): void {
+        if (order.isValid()) {
+            this.processPayment(order);
+            this.shipOrder(order);
+        }
+    }
+
+    private processPayment(order: Order): void {
+        // Payment processing logic
+    }
+
+    private shipOrder(order: Order): void {
+        // Order shipping logic
+    }
+}
+</code></pre>
+
+<h3>2. Don't Use the else keyword</h3>
+
+<p>Eliminating else can lead to clearer code and a more linear control flow.</p>
+
+<pre><code class="language-typescript">
+class DiscountCalculator {
+    calculateDiscount(order: Order): number {
+        if (order.isHolidaySeason()) {
+            return order.total * 0.1;
+        }
+        if (order.isMember()) {
+            return order.total * 0.05;
+        }
+        return 0;
+    }
+}
+</code></pre>
+
+<h3>3. Wrap All Primitives and Collections in Classes</h3>
+
+<p>
+  Primitives and collections should be encapsulated in classes to improve
+  semantics and validation.
+</p>
+
+<pre><code class="language-typescript">
+class Email {
+    private value: string;
+
+    constructor(email: string) {
+        if (!this.validate(email)) {
+            throw new Error("Invalid email");
+        }
+        this.value = email;
+    }
+
+    private validate(email: string): boolean {
+        // Validate email format
+        return /\S+@\S+\.\S+/.test(email);
+    }
+
+    toString(): string {
+        return this.value;
+    }
+}
+
+class EmailList {
+    private emails: Email[];
+
+    constructor(emails: Email[]) {
+        this.emails = emails;
+    }
+
+    add(email: Email): void {
+        this.emails.push(email);
+    }
+}
+</code></pre>
+
+<h3>4. First Class Collections</h3>
+
+<p>
+  Each class should have a single responsibility, making it easier to maintain
+  and test.
+</p>
+
+<pre><code class="language-typescript">
+class Orders {
+    private orders: Order[];
+
+    constructor(orders: Order[]) {
+        this.orders = orders;
+    }
+
+    add(order: Order): void {
+        this.orders.push(order);
+    }
+
+    getTotalValue(): number {
+        return this.orders.reduce((total, order) => total + order.total, 0);
+    }
+}
+</code></pre>
+
+<h3>5. One Dot per Line</h3>
+
+<p>This encourages the Law of Demeter, avoiding deep dependencies.</p>
+
+<pre><code class="language-typescript">
+class OrderSummary {
+    constructor(private order: Order) {}
+
+    getTotal(): number {
+        return this.order.getTotal();
+    }
+
+    getItemCount(): number {
+        return this.order.getItemCount();
+    }
+}
+</code></pre>
+
+<h3>6. Don’t Abbreviate</h3>
+
+<p>
+  It is tempting to abbreviate class names, methods, or variables. Resist the
+  temptation, as abbreviations confuse and tend to hide more serious problems.
+  For example, it can help you recognize single responsibility problems, etc.
+</p>
+
+<pre><code class="language-typescript">
+class CustomerAddress {
+    constructor(
+        public street: string,
+        public city: string,
+        public state: string,
+        public zip: string
+    ) {}
+
+    fullAddress(): string {
+        return `${this.street}, ${this.city}, ${this.state}, ${this.zip}`;
+    }
+}
+</code></pre>
+
+<h3>7. Keep All Entities Small</h3>
+
+<p>Small classes are easier to understand and maintain.</p>
+
+<pre><code class="language-typescript">
+class Address {
+    constructor(
+        public street: string,
+        public city: string,
+        public state: string,
+        public zip: string
+    ) {}
+
+    fullAddress(): string {
+        return `${this.street}, ${this.city}, ${this.state}, ${this.zip}`;
+    }
+}
+</code></pre>
+
+<h3>8. No Classes with More Than Two Instance Variables</h3>
+
+<p>
+  Limiting the number of instance variables simplifies classes and makes them
+  more cohesive.
+</p>
+
+<pre><code class="language-typescript">
+class Coordinates {
+    constructor(public latitude: number, public longitude: number) {}
+}
+</code></pre>
+
+<h3>9. Don’t use any getters/setters/properties</h3>
+
+<p>
+  Avoid using getters, setters, or public properties. Instead, create methods
+  that describe the behavior.
+</p>
+
+<pre><code class="language-typescript">
+class BankAccount {
+    private balance: number;
+
+    constructor(initialBalance: number) {
+        this.balance = initialBalance;
+    }
+
+    deposit(amount: number): void {
+        if (amount <= 0) {
+            throw new Error("Deposit amount must be positive");
+        }
+        this.balance += amount;
+    }
+
+    withdraw(amount: number): void {
+        if (amount > this.balance) {
+            throw new Error("Insufficient funds");
+        }
+        this.balance -= amount;
+    }
+
+    // Instead of a getter for balance
+    getBalance(): number {
+        return this.balance;
+    }
+}
+</code></pre>
+
+<p>This rule is basically follow tell don't ask principle.</p>
+
+<p>Conclusion</p>
+
+<p>
+  Object Calisthenics provides a set of rules that can help write cleaner and
+  more maintainable code. By following these practices, we can create more
+  robust and understandable applications.
+</p>
