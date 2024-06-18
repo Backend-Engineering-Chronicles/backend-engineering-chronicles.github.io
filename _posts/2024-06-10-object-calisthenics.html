@@ -86,7 +86,7 @@ background: "/img/posts/01.jpg"
     }
 </code></pre>
 
-In this example, we extracted the code to some private methods.
+<p>In this example, we extracted the code to some private methods.</p>
 
 <h3>2. Don't Use the else keyword</h3>
 
@@ -218,18 +218,35 @@ class CustomerAddress {
 <p>Small classes are easier to understand and maintain.</p>
 
 <pre><code class="language-typescript">
-class Address {
-    constructor(
-        public street: string,
-        public city: string,
-        public state: string,
-        public zip: string
-    ) {}
-
-    fullAddress(): string {
-        return `${this.street}, ${this.city}, ${this.state}, ${this.zip}`;
+    class Item {
+        name: string;
+        price: number;
+    
+        constructor(name: string, price: number) {
+            this.name = name;
+            this.price = price;
+        }
     }
-}
+    
+    class Order {
+        items: Item[];
+    
+        constructor() {
+            this.items = [];
+        }
+    
+        addItem(item: Item): void {
+            this.items.push(item);
+        }
+    
+        getTotal(): number {
+            return this.items.reduce((total, item) => total + item.price, 0);
+        }
+    
+        isValid(): boolean {
+            return this.items.length > 0;
+        }
+    }
 </code></pre>
 
 <h3>8. No Classes with More Than Two Instance Variables</h3>
