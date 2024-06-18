@@ -42,23 +42,51 @@ background: "/img/posts/01.jpg"
 </p>
 
 <pre><code class="language-typescript">
-class OrderProcessor {
-    processOrder(order: Order): void {
-        if (order.isValid()) {
-            this.processPayment(order);
-            this.shipOrder(order);
+    class OrderProcessor {
+        public processOrders(orders: Order[]): void {
+            for (const order of orders) {
+                this.processSingleOrder(order);
+            }
+        }
+    
+        private processSingleOrder(order: Order): void {
+            if (!this.isOrderValid(order)) {
+                this.handleInvalidOrder(order);
+                return
+            }
+
+            this.processOrder(order);
+        }
+    
+        private isOrderValid(order: Order): boolean {
+            return order !== null && order.isValid();
+        }
+    
+        private processOrder(order: Order): void {
+            this.executePayment(order);
+            this.sendConfirmation(order);
+            this.recordOrder(order);
+        }
+    
+        private executePayment(order: Order): void {
+            console.log("Payment executed for order with items:", order.items);
+        }
+    
+        private sendConfirmation(order: Order): void {
+            console.log("Confirmation sent for order with items:", order.items);
+        }
+    
+        private recordOrder(order: Order): void {
+            console.log("Order recorded with items:", order.items);
+        }
+    
+        private handleInvalidOrder(order: Order): void {
+            console.log("Invalid order with items:", order.items);
         }
     }
-
-    private processPayment(order: Order): void {
-        // Payment processing logic
-    }
-
-    private shipOrder(order: Order): void {
-        // Order shipping logic
-    }
-}
 </code></pre>
+
+In this example, we extracted the code to some private methods.
 
 <h3>2. Don't Use the else keyword</h3>
 
