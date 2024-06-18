@@ -42,48 +42,48 @@ background: "/img/posts/01.jpg"
 </p>
 
 <pre><code class="language-typescript">
-    class OrderProcessor {
-        public processOrders(orders: Order[]): void {
-            for (const order of orders) {
-                this.processSingleOrder(order);
-            }
-        }
-    
-        private processSingleOrder(order: Order): void {
-            if (!this.isOrderValid(order)) {
-                this.handleInvalidOrder(order);
-                return
-            }
-
-            this.processOrder(order);
-        }
-    
-        private isOrderValid(order: Order): boolean {
-            return order !== null && order.isValid();
-        }
-    
-        private processOrder(order: Order): void {
-            this.executePayment(order);
-            this.sendConfirmation(order);
-            this.recordOrder(order);
-        }
-    
-        private executePayment(order: Order): void {
-            console.log("Payment executed for order with items:", order.items);
-        }
-    
-        private sendConfirmation(order: Order): void {
-            console.log("Confirmation sent for order with items:", order.items);
-        }
-    
-        private recordOrder(order: Order): void {
-            console.log("Order recorded with items:", order.items);
-        }
-    
-        private handleInvalidOrder(order: Order): void {
-            console.log("Invalid order with items:", order.items);
+class OrderProcessor {
+    public processOrders(orders: Order[]): void {
+        for (const order of orders) {
+            this.processSingleOrder(order);
         }
     }
+
+    private processSingleOrder(order: Order): void {
+        if (!this.isOrderValid(order)) {
+            this.handleInvalidOrder(order);
+            return
+        }
+
+        this.processOrder(order);
+    }
+
+    private isOrderValid(order: Order): boolean {
+        return order !== null && order.isValid();
+    }
+
+    private processOrder(order: Order): void {
+        this.executePayment(order);
+        this.sendConfirmation(order);
+        this.recordOrder(order);
+    }
+
+    private executePayment(order: Order): void {
+        console.log("Payment executed for order with items:", order.items);
+    }
+
+    private sendConfirmation(order: Order): void {
+        console.log("Confirmation sent for order with items:", order.items);
+    }
+
+    private recordOrder(order: Order): void {
+        console.log("Order recorded with items:", order.items);
+    }
+
+    private handleInvalidOrder(order: Order): void {
+        console.log("Invalid order with items:", order.items);
+    }
+}
 </code></pre>
 
 <p>In this example, we extracted the code to some private methods.</p>
@@ -98,6 +98,7 @@ class DiscountCalculator {
         if (order.isHolidaySeason()) {
             return order.total * 0.1;
         }
+
         if (order.isMember()) {
             return order.total * 0.05;
         }
@@ -218,35 +219,35 @@ class CustomerAddress {
 <p>Small classes are easier to understand and maintain.</p>
 
 <pre><code class="language-typescript">
-    class Item {
-        name: string;
-        price: number;
-    
-        constructor(name: string, price: number) {
-            this.name = name;
-            this.price = price;
-        }
+class Item {
+    name: string;
+    price: number;
+
+    constructor(name: string, price: number) {
+        this.name = name;
+        this.price = price;
     }
-    
-    class Order {
-        items: Item[];
-    
-        constructor() {
-            this.items = [];
-        }
-    
-        addItem(item: Item): void {
-            this.items.push(item);
-        }
-    
-        getTotal(): number {
-            return this.items.reduce((total, item) => total + item.price, 0);
-        }
-    
-        isValid(): boolean {
-            return this.items.length > 0;
-        }
+}
+
+class Order {
+    items: Item[];
+
+    constructor() {
+        this.items = [];
     }
+
+    addItem(item: Item): void {
+        this.items.push(item);
+    }
+
+    getTotal(): number {
+        return this.items.reduce((total, item) => total + item.price, 0);
+    }
+
+    isValid(): boolean {
+        return this.items.length > 0;
+    }
+}
 </code></pre>
 
 <h3>8. No Classes with More Than Two Instance Variables</h3>
