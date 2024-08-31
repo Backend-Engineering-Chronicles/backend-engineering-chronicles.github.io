@@ -43,14 +43,15 @@ background: "/img/posts/01.jpg"
         }
     }
 
-    private belongsToRequest(request: Request): boolen {
+    private belongsToRequest(request: Request): boolean {
         return this.requestId.equal(request.getId())
     }
 </code></pre>
 <p>
-  As mentioned, there are cases where we might need to pass the request directly
-  into the aggregate method. It’s crucial in such situations to ensure that our
-  domain maintains its integrity by validating the request before proceeding.
+  As mentioned, there are cases where we might need to pass another entity
+  directly (in our case Request) into the aggregate method. It’s crucial in such
+  situations to ensure that our domain maintains its integrity by validating the
+  entity before proceeding.
 </p>
 <p>
   In the example above, the method <code>processRequest</code> first checks if
