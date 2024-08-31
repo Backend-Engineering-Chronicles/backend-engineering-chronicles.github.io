@@ -1,0 +1,96 @@
+---
+layout: post
+title: "Protecting domain integrity through validation"
+subtitle: "Validating Inputs to preserve business integrity in our domain"
+date: 2024-08-31 10:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Protecting domain integrity through validation</h1>
+<h2>Validating inputs to preserve business integrity in our domain</h2>
+<p>
+  In this post, I’m going to discuss how to validate inputs to maintain the
+  integrity of our business domain. Specifically, I’ll assume we are working
+  with entities and aggregates, which are tactical patterns in Domain-Driven
+  Design (DDD).
+</p>
+<p>
+  There are situations, where we might need to pass an entity directly to a
+  method within our aggregate. Let’s look at an example:
+</p>
+<pre><code class="language-typescript"> 
+    
+    class Order { 
+        constructor(
+            private id: OrderId, 
+            private requestId: RequestId, 
+            // Other properties... 
+        ) {} 
+    } 
+</code></pre>
+
+<p>Consider a method like this:</p>
+
+<pre><code class="language-typescript"> 
+    class Order {
+        processRequest(request: Request): void {
+            if (!this.belongsToRequest(request)) {
+                throw new RequestDoesNotBelongToOrder(request.getId());
+            }
+    
+            // Rest of the code
+        }
+    }
+
+    private belongsToRequest(request: Request): boolen {
+        return this.requestId.equal(request.getId())
+    }
+</code></pre>
+<p>
+  As mentioned, there are cases where we might need to pass the request directly
+  into the aggregate method. It’s crucial in such situations to ensure that our
+  domain maintains its integrity by validating the request before proceeding.
+</p>
+<p>
+  In the example above, the method <code>processRequest</code> first checks if
+  the given request actually belongs to the order. This is achieved through the
+  <code>belongsToRequest</code> method, which compares the
+  <code>requestId</code> of the order with the <code>requestId</code> of the
+  incoming request. If they don’t match, an exception is thrown, indicating that
+  the request does not belong to the order.
+</p>
+<p>
+  This guard clause is essential to maintain the integrity of our domain. By
+  encapsulating this logic within the aggregate, we ensure that any operation on
+  the aggregate respects the domain's invariants and business rules.
+</p>
+<h3>Why is This Important?</h3>
+<p>
+  Ensuring the integrity of our domain models is critical for several reasons:
+</p>
+<ul>
+  <li>
+    <strong>Consistency:</strong> It prevents inconsistent states within the
+    aggregate, which could lead to bugs or unexpected behaviors in the system.
+  </li>
+  <li>
+    <strong>Protection of Business Rules:</strong> By validating inputs and
+    operations within the aggregate, we safeguard the core business logic that
+    the aggregate is responsible for.
+  </li>
+  <li>
+    <strong>Encapsulation:</strong> The aggregate is the guardian of its own
+    state, ensuring that all modifications happen in a controlled and valid
+    manner.
+  </li>
+</ul>
+<p>
+  By following these principles, we not only maintain a clean and robust domain
+  model but also build a system that is easier to understand, maintain, and
+  extend.
+</p>
+<p>
+  Remember, wlways validate inputs and operations within your aggregates to
+  uphold the business rules and keep your domain model in a consistent state.
+</p>
