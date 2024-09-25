@@ -78,6 +78,7 @@ The idea of this approach is avoid early abstractions and YAGNI. It's about disc
   <li>By testing behavior and not implementation, it helps you see if you are covering the entire domain from the perspective of the use case; this is reflected in the coverage. If you are forgetting to test something in the domain, it will show up in the coverage. Hence, better coverage, more real and more security.</li>
   <li>More independent code.</li>
   <li>Improved delivery (less fragility in tests, better delivery).</li>
+  <li>It prevents you from adding unnecessary tests and code that you don't need.</li>
 </ul>
 
 <h4>Disadvantages of Outside-In</h4>
@@ -94,6 +95,6 @@ The idea of this approach is avoid early abstractions and YAGNI. It's about disc
 
 <p>Furthermore, I focus on the user's perspective/the use case, as I mentioned earlier, which makes my tests less fragile.</p>
 
-<h4>Why not Inside-Out?</h4>
+<h4>Why I don't like Inside-Out?</h4>
 
-<p>Basically, as I mentioned earlier, inside-out makes me lose focus on the use case and may lead me to add tests that I don't need or that are meaningless. Moreover, it makes the tests more fragile since I am coupled to the implementation, and at the same time, I have to maintain many more files. All of this harms the delivery.</p>
+<p>Basically, as I mentioned earlier, inside-out makes me lose focus on the use case and may lead me to add tests and code that I don't need or that are meaningless. Moreover, it makes the tests more fragile since I am coupled to the implementation, and at the same time, I have to maintain many more files. All of this harms the delivery.</p>
