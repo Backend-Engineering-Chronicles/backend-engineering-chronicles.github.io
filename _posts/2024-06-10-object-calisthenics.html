@@ -265,6 +265,8 @@ class Coordinates {
 }
 </code></pre>
 
+<p>In this rule the point for me it's to maintaine the class small as possible. For example in DDD project using aggregates the point is create aggregate smallers.</p>
+
 <h3>9. Don’t use any getters/setters/properties</h3>
 
 <p>
@@ -301,7 +303,7 @@ class BankAccount {
 }
 </code></pre>
 
-<p>This rule is basically follow tell don't ask principle.</p>
+<p>This rule is basically follow tell don't ask principle. That's why I would like to emphasize that it is not wrong to use a getter alone, the problem is using getters and setters together, since here the tell don't ask principle can be broken.</p>
 
 <p>Conclusion</p>
 
