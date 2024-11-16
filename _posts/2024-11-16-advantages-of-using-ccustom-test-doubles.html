@@ -1,0 +1,399 @@
+---
+layout: post
+title: "Advantages of using custom test doubles"
+subtitle: "Validating Inputs to preserve business integrity in our domain"
+date: 2024-11-16 00:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Advantages of Using Custom Test Doubles</h1>
+<h2>Custom Test Doubles for Decoupling</h2>
+
+<p>
+  In this post, I would like to talk about why I prefer my own test doubles over using those provided by a library. First of all, we need to define what a test double is.
+</p>
+<p>
+  A test double is an object that takes the place of a production object during a test. They are used to eliminate unwanted side effects, algo are used to isolate the unit of code being teste. We have different types.
+</p>
+<ul>
+  <li>
+    Dummy: Objects that do nothing and only exist to fulfill the necessary parameters of a function or constructor.
+  </li>
+  <li>
+    Fake: Simplified but functional implementations of a dependency, useful when a certain level of realism is needed. They have working implementations but generally take shortcuts that make them unsuitable for production (e.g., an in-memory repository).
+  </li>
+  <li>
+    Stub: Objects that return predefined data in response to specific calls but do not verify interactions.
+  </li>
+  <li>
+    Mock: Objects that simulate the behavior of a dependency and include expectations on how they should be used, verifying that certain interactions occur. It checks the parameters and the calls received.
+  </li>
+  <li>
+    Spy: Similar to mocks, but instead of defining expectations, they simply record interactions to be verified later. They only verify calls to an object, not defining expectations.
+  </li>
+</ul>
+<p>
+  With this clarified, we can discuss the advantages of having our own test doubles rather than using those provided by a test library like jest or phpunit, etc.
+</p>
+
+<ul>
+  <li>
+    Framework migration for tests (e.g., migrating from jest to vitest for performance in pipelines).
+  </li>
+  <li>
+    Tests are less fragile and less coupled to implementations. They do not force you to talk about specific implementation details to satisfy the mock of the test framework. This means that if a method changes, only your test double needs to change, not your tests.
+  </li>
+</ul>
+
+<p>For me, the last point is the most important. Let’s look at an example to understand the difference.</p>
+
+<p>Using the following use case:</p>
+
+<pre><code class="language-typescript"> 
+    @CommandHandler(CreateCountryCommand)
+    export default class CreateCountryCommandHandler implements ICommandHandler<CreateCountryCommand> {
+      constructor(
+        @Inject(COUNTRY_REPOSITORY) private readonly countryRepository: CountryRepository,
+        @Inject(EVENT_BUS) private readonly eventBus: EventBus,
+      ) {}
+    
+      async execute(command: CreateCountryCommand): Promise<void> {
+        const countryId = CountryId.of(command.id);
+        await this.guardCountryDoesNotExists(countryId);
+    
+        const languages = LanguageCollection.of(command.languages);
+    
+        const country = Country.create(countryId, command.name, command.iso, languages);
+    
+        this.countryRepository.save(country);
+    
+        void this.eventBus.publish(country.pullDomainEvents());
+      }
+    
+      private async guardCountryDoesNotExists(countryId: CountryId): Promise<void> {
+        const country = await this.countryRepository.findById(countryId);
+        if (country) {
+          throw new CountryAlreadyExistsException(countryId.toString());
+        }
+      }
+    }
+</code></pre>
+
+<p>First of all let's see and example using jest for the test doubles:</p>
+
+<pre><code class="language-typescript">
+    describe('Given a CreateCountryCommandHandler to handle', () => {
+      let eventBus: EventBus;
+      let countryRepository: CountryRepository;
+      let handler: CreateCountryCommandHandler;
+    
+      const prepareDependencies = () => {
+        eventBus = {
+          publish: jest.fn(),
+          domainEvents: jest.fn().mockReturnValue([]),
+        } as unknown as EventBus;
+    
+        countryRepository = {
+          findById: jest.fn(),
+          findAll: jest.fn().mockResolvedValue([]),
+          save: jest.fn(),
+        } as unknown as CountryRepository;
+      };
+    
+      const initHandler = () => {
+        handler = new CreateCountryCommandHandler(countryRepository, eventBus);
+      };
+    
+      const clean = () => {
+        eventBus.publish.mockClear();
+        countryRepository.save.mockClear();
+      };
+    
+      beforeAll(() => {
+        prepareDependencies();
+        initHandler();
+      });
+    
+      beforeEach(() => {
+        clean();
+      });
+    
+      describe('When the country id is invalid', () => {
+        let command: CreateCountryCommand;
+    
+        function startScenario() {
+          command = CreateCountryCommandMother.random({ id: '' });
+        }
+    
+        beforeEach(startScenario);
+    
+        it('should throw an exception', async () => {
+          await expect(handler.execute(command)).rejects.toThrowError(InvalidArgumentException);
+        });
+    
+        it('should not create the country', async () => {
+          await expect(handler.execute(command)).rejects.toThrow();
+          expect(countryRepository.save).not.toHaveBeenCalled();
+        });
+    
+        it('should not publish any event', async () => {
+          await expect(handler.execute(command)).rejects.toThrow();
+          expect(eventBus.domainEvents()).toHaveLength(0);
+        });
+      });
+    
+      describe('When the country already exists', () => {
+        let command: CreateCountryCommand;
+    
+        function startScenario() {
+          const country = CountryMother.random();
+          command = CreateCountryCommandMother.random({ id: country.getId().value });
+          countryRepository.findById.mockResolvedValue(country);
+        }
+    
+        beforeEach(startScenario);
+    
+        it('should throw an exception', async () => {
+          await expect(handler.execute(command)).rejects.toThrowError(CountryAlreadyExistsException);
+        });
+    
+        it('should not create the country', async () => {
+          await expect(handler.execute(command)).rejects.toThrow();
+          expect(countryRepository.save).not.toHaveBeenCalled();
+        });
+    
+        it('should not publish any event', async () => {
+          await expect(handler.execute(command)).rejects.toThrow();
+          expect(eventBus.domainEvents()).toHaveLength(0);
+        });
+      });
+    
+      describe('When the parameters are valid and the country does not exist', () => {
+        let command: CreateCountryCommand;
+        let country: Country;
+    
+        function startScenario() {
+          command = CreateCountryCommandMother.random();
+          country = CountryMother.createFromCreateCountryCommand(command);
+          countryRepository.findById.mockResolvedValue(null);
+        }
+    
+        beforeEach(startScenario);
+    
+        it('should create a country', async () => {
+          await handler.execute(command);
+          expect(countryRepository.save).toHaveBeenCalledWith(country);
+        });
+    
+        it('should publish an event', async () => {
+          await handler.execute(command);
+          const countryCreatedEvent = CountryCreatedEventMother.createFromCreateCountryCommand(command);
+          expect(eventBus.domainEvents()).toHaveLength(1);
+          expect(eventBus.domainEvents()[0]).toEqual(countryCreatedEvent);
+        });
+      });
+    });
+</code></pre>
+
+<p>As you can see, the tests are tightly coupled to the repository and the event bus in this case. The test knows implementation details of these collaborators, which makes the tests more coupled and fragile. In this case, it’s a simple example, but it’s to help understand the concept.</p> 
+
+<p>Now let’s see how it would look implementing our own test doubles, for example:</p> 
+
+<p>NOTE: For simplicity, I’m calling all the test doubles with the suffix "Mock," but they could be named differently. For example, for the EventBus, we could call it EventBusSpy (since, in the end, we need to spy on whether the event was persisted correctly).</p>
+
+<p>The test doubles would be:</p>
+
+<pre><code class="language-typescript"></code>
+
+    export class EventBusMock implements EventBus {
+        private storedEvents: DomainEvent[] = [];
+      
+        async publish(events: DomainEvent[]): Promise<void> {
+          this.storedEvents.push(...events);
+        }
+      
+        domainEvents(): DomainEvent[] {
+          return this.storedEvents;
+        }
+      
+        clean(): void {
+          this.storedEvents = [];
+        }
+      }
+
+</code></pre>
+
+<pre><code class="language-typescript"></code>
+
+    export class CountryRepositoryMock implements CountryRepository {
+        private changed: boolean = false;
+        private countriesStored: Country[] = [];
+        private toReturn: Country[] = [];
+      
+        constructor() {
+          this.changed = false;
+          this.countriesStored = [];
+          this.toReturn = [];
+        }
+      
+        add(country: Country) {
+          return this.toReturn.push(country);
+        }
+      
+        storedChanged(): boolean {
+          return this.changed;
+        }
+      
+        stored(): Country[] {
+          return this.countriesStored;
+        }
+      
+        clean(): void {
+          this.changed = false;
+          this.countriesStored = [];
+          this.toReturn = [];
+        }
+      
+        async findAll(): Promise<Country[]> {
+          return this.toReturn;
+        }
+      
+        async findById(_id: CountryId): Promise<Country | null> {
+          return this.toReturn.length > 0 ? this.toReturn[0] : null;
+        }
+      
+        save(country: Country): void {
+          this.changed = true;
+          this.countriesStored.push(country);
+        }
+      }
+
+</code></pre>
+
+<p>This is how they would be used:</p>
+
+<pre><code class="language-typescript">
+    describe('Given a CreateCountryCommandHandler to handle', () => {
+        let eventBus: EventBusMock;
+        let countryRepository: CountryRepositoryMock;
+        let handler: CreateCountryCommandHandler;
+      
+        const prepareDependencies = () => {
+          eventBus = new EventBusMock();
+          countryRepository = new CountryRepositoryMock();
+        };
+      
+        const initHandler = () => {
+          handler = new CreateCountryCommandHandler(countryRepository, eventBus);
+        };
+      
+        const clean = () => {
+          countryRepository.clean();
+          eventBus.clean();
+        };
+      
+        beforeAll(() => {
+          prepareDependencies();
+          initHandler();
+        });
+      
+        beforeEach(() => {
+          clean();
+        });
+      
+        describe('When the country id is invalid', () => {
+          let command: CreateCountryCommand;
+      
+          function startScenario() {
+            command = CreateCountryCommandMother.random({ id: '' });
+          }
+      
+          beforeEach(startScenario);
+      
+          it('should thrown an exception', async () => {
+            await expect(handler.execute(command)).rejects.toThrowError(InvalidArgumentException);
+          });
+      
+          it('should not create the country', async () => {
+            await expect(handler.execute(command)).rejects.toThrow();
+      
+            expect(countryRepository.storedChanged()).toBeFalsy();
+            expect(countryRepository.stored()).toHaveLength(0);
+          });
+      
+          it('should not publish any event', async () => {
+            await expect(handler.execute(command)).rejects.toThrow();
+      
+            expect(eventBus.domainEvents()).toHaveLength(0);
+          });
+        });
+      
+        describe('When the country already exists', () => {
+          let command: CreateCountryCommand;
+      
+          function startScenario() {
+            const country = CountryMother.random();
+            command = CreateCountryCommandMother.random({ id: country.getId().value });
+            countryRepository.add(country);
+          }
+      
+          beforeEach(startScenario);
+      
+          it('should thrown an exception', async () => {
+            await expect(handler.execute(command)).rejects.toThrowError(CountryAlreadyExistsException);
+          });
+      
+          it('should not create the country', async () => {
+            await expect(handler.execute(command)).rejects.toThrow();
+      
+            expect(countryRepository.storedChanged()).toBeFalsy();
+            expect(countryRepository.stored()).toHaveLength(0);
+          });
+      
+          it('should not publish any event', async () => {
+            await expect(handler.execute(command)).rejects.toThrow();
+      
+            expect(eventBus.domainEvents()).toHaveLength(0);
+          });
+        });
+      
+        describe('When the parameters are valid and the country does not exists', () => {
+          let command: CreateCountryCommand;
+          let country: Country;
+      
+          function startScenario() {
+            command = CreateCountryCommandMother.random();
+            country = CountryMother.createFromCreateCountryCommand(command);
+          }
+      
+          beforeEach(startScenario);
+      
+          it('should create a country', async () => {
+            await handler.execute(command);
+      
+            const countryStored = countryRepository.stored();
+            expect(countryRepository.storedChanged()).toBeTruthy();
+            expect(countryStored).toHaveLength(1);
+            expect(countryStored[0].toPrimitives()).toEqual(country.toPrimitives());
+          });
+      
+          it('should publish an event', async () => {
+            await handler.execute(command);
+      
+            const countryCreatedEvent = CountryCreatedEventMother.createFromCreateCountryCommand(command);
+            expect(eventBus.domainEvents()).toHaveLength(1);
+            expect(eventBus.domainEvents()[0]).toEqual({
+              ...countryCreatedEvent,
+            });
+          });
+        });
+      });
+
+</code></pre>
+
+<h2>Conclusion</h2>
+
+<p>As seen in the example, they are simple objects, which makes our tests cleaner, more decoupled, and less fragile. This test suite doesn't know anything about how the repository or the event bus is implemented.</p> 
+
+<p>We could change the name of a method, and we would only need to change the test double, and that's it. The test suite would continue working without needing any modifications.</p>
