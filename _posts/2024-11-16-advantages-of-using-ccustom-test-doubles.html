@@ -204,70 +204,74 @@ background: "/img/posts/01.jpg"
 
 <p>The test doubles would be:</p>
 
+<p>EventBusMock:</p>
+
 <pre><code class="language-typescript"></code>
 
-    export class EventBusMock implements EventBus {
-        private storedEvents: DomainEvent[] = [];
-      
-        async publish(events: DomainEvent[]): Promise<void> {
-          this.storedEvents.push(...events);
-        }
-      
-        domainEvents(): DomainEvent[] {
-          return this.storedEvents;
-        }
-      
-        clean(): void {
-          this.storedEvents = [];
-        }
+  export class EventBusMock implements EventBus {
+      private storedEvents: DomainEvent[] = [];
+    
+      async publish(events: DomainEvent[]): Promise<void> {
+        this.storedEvents.push(...events);
       }
+    
+      domainEvents(): DomainEvent[] {
+        return this.storedEvents;
+      }
+    
+      clean(): void {
+        this.storedEvents = [];
+      }
+    }
 
 </code></pre>
 
+<p>CountryRepositoryMock:</p>
+
 <pre><code class="language-typescript"></code>
 
-    export class CountryRepositoryMock implements CountryRepository {
-        private changed: boolean = false;
-        private countriesStored: Country[] = [];
-        private toReturn: Country[] = [];
-      
-        constructor() {
-          this.changed = false;
-          this.countriesStored = [];
-          this.toReturn = [];
-        }
-      
-        add(country: Country) {
-          return this.toReturn.push(country);
-        }
-      
-        storedChanged(): boolean {
-          return this.changed;
-        }
-      
-        stored(): Country[] {
-          return this.countriesStored;
-        }
-      
-        clean(): void {
-          this.changed = false;
-          this.countriesStored = [];
-          this.toReturn = [];
-        }
-      
-        async findAll(): Promise<Country[]> {
-          return this.toReturn;
-        }
-      
-        async findById(_id: CountryId): Promise<Country | null> {
-          return this.toReturn.length > 0 ? this.toReturn[0] : null;
-        }
-      
-        save(country: Country): void {
-          this.changed = true;
-          this.countriesStored.push(country);
-        }
+  export class CountryRepositoryMock implements CountryRepository {
+      private changed: boolean = false;
+      private countriesStored: Country[] = [];
+      private toReturn: Country[] = [];
+    
+      constructor() {
+        this.changed = false;
+        this.countriesStored = [];
+        this.toReturn = [];
       }
+    
+      add(country: Country) {
+        return this.toReturn.push(country);
+      }
+    
+      storedChanged(): boolean {
+        return this.changed;
+      }
+    
+      stored(): Country[] {
+        return this.countriesStored;
+      }
+    
+      clean(): void {
+        this.changed = false;
+        this.countriesStored = [];
+        this.toReturn = [];
+      }
+    
+      async findAll(): Promise<Country[]> {
+        return this.toReturn;
+      }
+    
+      async findById(_id: CountryId): Promise<Country | null> {
+        return this.toReturn.length > 0 ? this.toReturn[0] : null;
+      }
+    
+      save(country: Country): void {
+        this.changed = true;
+        this.countriesStored.push(country);
+      }
+    }
 
 </code></pre>
 
@@ -392,8 +396,8 @@ background: "/img/posts/01.jpg"
 
 </code></pre>
 
-<h2>Conclusion</h2>
-
 <p>As seen in the example, they are simple objects, which makes our tests cleaner, more decoupled, and less fragile. This test suite doesn't know anything about how the repository or the event bus is implemented.</p> 
+
+<h2>Conclusion</h2>
 
 <p>We could change the name of a method, and we would only need to change the test double, and that's it. The test suite would continue working without needing any modifications.</p>
