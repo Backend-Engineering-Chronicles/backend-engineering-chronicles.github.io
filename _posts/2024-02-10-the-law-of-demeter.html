@@ -76,10 +76,13 @@ background: "/img/posts/01.jpg"
   const address = new Address('Main Street');
   const person = new Person('John', address);
   
-  console.log(`${person.getAddress.getStreet()}, ${this.address.getZip}`);
+  console.log(`${person.getAddress().getStreet()}, ${person.getAddress().getZip()}`);
   </code></pre>
 
-<p>In this case, we are breaking the Law of Demeter because we are exposing the Address class. To fix it:</p>
+<p>
+  In this case, we are breaking the Law of Demeter because we are exposing the
+  Address class. To fix it:
+</p>
 
 <pre><code class="language-typescript">
 class Person {
@@ -96,19 +99,15 @@ class Person {
   }
 
   location(): string {
-    return `${this.address.getStreet()}, ${this.address.getZip}`;
+    return this.address.getFormattedAddress();
   }
 }
 
 class Address {
   constructor(private street: string, private zip: string) {}
 
-  getStreet(): string {
-    return this.street;
-  }
-
-  getZip(): string {
-    return this.zip;
+  getFormattedAddress(): string {
+    return `${this.street}, ${this.zip}`;
   }
 }
 
