@@ -95,32 +95,37 @@ class Person {
     return this.name;
   }
 
-  getStreet(): string {
-    return this.address.getStreet();
+  location(): string {
+    return `${this.address.getStreet()}, ${this.address.getZip}`;
   }
 }
 
 class Address {
-  private street: string;
-
-  constructor(street: string) {
-    this.street = street;
-  }
+  constructor(private street: string, private zip: string) {}
 
   getStreet(): string {
     return this.street;
+  }
+
+  getZip(): string {
+    return this.zip;
   }
 }
 
 const address = new Address('Main Street');
 const person = new Person('John', address);
 
-console.log(person.getStreet());
+console.log(person.location());
 </code></pre>
 
 <p>
-  As we can see, we get the street from a method called getStreet from the
-  Person class; this internally calls a getStreet method from the Address class.
+  As we can see, we get the street from a method called location from the Person
+  class; this internally calls a getStreet and getZip methods from the Address
+  class.
+</p>
+<p>
+  Another important thing is not to expose unnecessary internal details in the
+  naming. We need to focus on behavior based on the needs of the clients."
 </p>
 
 <h3>Benefits of the Law of Demeter</h3>
