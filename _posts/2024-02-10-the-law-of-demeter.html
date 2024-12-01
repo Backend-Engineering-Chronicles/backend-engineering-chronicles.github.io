@@ -62,24 +62,24 @@ background: "/img/posts/01.jpg"
   }
   
   class Address {
-    private street: string;
-  
-    constructor(street: string) {
-      this.street = street;
-    }
+    constructor(private street: string, private zip: string) {}
   
     getStreet(): string {
       return this.street;
     }
-  }
   
+    getZip(): string {
+      return this.zip;
+    }
+  }
+    
   const address = new Address('Main Street');
   const person = new Person('John', address);
   
-  console.log(person.getAddress.getStreet());
+  console.log(`${person.getAddress.getStreet()}, ${this.address.getZip}`);
   </code></pre>
 
-In this case we are breaking the law of demeter, to fix it:
+<p>In this case, we are breaking the Law of Demeter because we are exposing the Address class. To fix it:</p>
 
 <pre><code class="language-typescript">
 class Person {
