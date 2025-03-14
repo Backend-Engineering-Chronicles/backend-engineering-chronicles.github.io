@@ -1,6 +1,6 @@
 # Backend engineering chronicles
 
-## Personal blog about backend
+## Personal blog about backend engineering
 
 In this blog I will talk about:
 
