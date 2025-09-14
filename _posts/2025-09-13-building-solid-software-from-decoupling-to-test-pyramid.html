@@ -1,0 +1,466 @@
+---
+layout: post
+title: "Building Solid Software: From Decoupling to the Test Pyramid"
+subtitle: "Linking software architecture with testing strategies for more reliable systems"
+date: 2025-09-13 00:00:00
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h1>Building Solid Software: From Decoupling to the Test Pyramid</h1>
+<h2>Linking software architecture with testing strategies for more reliable systems</h2>
+
+<p>
+    In this post I want to talk about decoupling, testing and test pyramid. I would like to answer some questions why is it so important and how to do it. So based on that the points in this post these will be:
+</p>
+
+<ul>
+  <li>Why is testing important?</li>
+  <li>What types of tests do we have?</li>
+  <li>What is the test pyramid and why is it important?</li>
+  <li>Why do I need to decouple my code?</li>
+  <li>How can I write good tests?</li>
+  <li>How can I achieve a solid test suite?</li>
+</ul>
+
+<h3>Why is testing important?</h3>
+
+<p>
+    Before diving deeper, we should clarify why having a good test suite matters. 
+    The obvious reason is to avoid bugs. Just like in a football match where defenders 
+    protect the goal, tests act as defenders that protect our code from potential issues. 
+    But there is more: a solid test suite also gives us confidence to refactor, 
+    add new features, and move fast without constantly fearing that something will break. 
+</p>
+<p>
+    Some people think that adding tests slows development down. 
+    In reality, the opposite is true: with a solid test suite you gain better 
+    maintainability and can move faster with confidence. 
+    Automated tests reduce the amount of repetitive checks, letting you focus manual effort on what truly matters. 
+</p>
+
+
+<h3>What types of tests do we have?</h3>
+
+<p>
+    There are different types of tests we can use to ensure the quality of our code. 
+    Each type has a different scope, cost, and purpose. 
+    The most common categories are:
+</p>
+
+<ul>
+    <li><strong>Unit tests:</strong> Small, fast tests that focus on individual functions or components in isolation.</li>
+    <li><strong>Integration tests:</strong> Verify that different modules or services work correctly together.</li>
+    <li><strong>Acceptance tests:</strong> Validate that the system meets business requirements and behaves as expected from the user's perspective.</li>
+    <li><strong>End-to-end (E2E) tests:</strong> Simulate real user flows across the entire system, from the UI to the database.</li>
+</ul>
+
+<h3>What is the test pyramid and why is it important?</h3>
+
+<p>
+    The test pyramid is a concept that helps us structure our tests in a balanced and efficient way. 
+    Imagine a pyramid: at the base, we have a large number of <strong>unit tests</strong>, 
+    in the middle a smaller number of <strong>integration tests</strong>, 
+    and at the top a few <strong>end-to-end</strong> or <strong>acceptance tests</strong>.
+</p>
+
+<p>
+    The idea is simple: the lower layers are fast, reliable, and cheap to maintain, 
+    while the upper layers are slower, more complex, and expensive to run. 
+    By having a solid foundation of unit tests, we can catch most issues early, 
+    reduce the risk of regressions, and make refactoring much safer. 
+    Integration and end-to-end tests then validate that all pieces work together and meet business requirements.
+</p>
+
+<p>
+    Following the test pyramid helps teams maintain a healthy balance: 
+    enough coverage to ensure quality without relying too heavily on slow or brittle end-to-end tests. 
+    It also reinforces the importance of writing modular, decoupled code that is easy to test.
+</p>
+
+<img src="/img/posts/test-pyramid.png"></img>
+
+<p>
+    If we invert the test pyramid, putting too many end-to-end tests at the top and only a few unit tests at the bottom, 
+    we will face several problems. End-to-end tests are slower to run (Hi CI hahahaha), more brittle, and harder to maintain. 
+    Relying heavily on them means that catching bugs early becomes difficult, and small changes can break multiple tests, 
+    slowing down development and reducing confidence in the code.
+</p>
+
+<p>
+    On the other hand, having a strong foundation of unit tests allows us to catch most issues quickly, 
+    run tests frequently, and make refactoring or adding new features much safer. 
+    The test pyramid exists to guide us towards an efficient balance: fast, reliable tests at the base and fewer, focused tests at the top.
+</p>
+
+<h3>Why do I need to decouple my code?</h3>
+
+<p>
+    Based on the previous explanation, we want to have more unit tests, right? 
+    So how can we achieve that? What is the best way to make our code easier to test? 
+    The answer is decoupling and following an architecture to do it.
+</p>
+
+<p>
+    Now that we know the different types of tests and their roles in the test pyramid, 
+    it's time to ask an important question: why is code decoupling essential? 
+    Even the best tests won't help much if your code is tightly coupled. 
+    When components depend too much on each other, writing unit tests becomes difficult, 
+    integration tests become fragile, and making changes without introducing bugs is risky.
+</p>
+
+<p>
+    Decoupling your code not only makes it easier to test, but also improves maintainability, 
+    scalability, and overall code quality. Let's explore why this matters and how to achieve it.
+</p>
+<p>
+    This point is quite interesting to me and makes me think a lot for several reasons. Generally, when we pick a framework (any framework), 
+    the "best practices" and architecture it promotes often show tightly coupled code. Even what they call unit testing, 
+    in my personal opinion, isn’t really unit testing: everything is coupled, so they have to provide tools, helpers, etc., 
+    to be able to test the code, including setting up a database, because the code is so tightly coupled. 
+    And this often leads to inverting the test pyramid.
+</p>
+
+<p>
+    That’s why the architectures provided by frameworks often don’t scale. 
+    When a project grows, it usually starts to be modularized to improve maintainability, 
+    but many times the code is still coupled and developers have to keep using the framework’s tools 
+    to test that coupled code.
+</p>
+
+<p>
+    Currently, in my day-to-day work, I’m on a Rails project, which is a completely different ecosystem 
+    from what I’ve worked with in the past, for several reasons. For example, Rails provides everything you need to develop: 
+    you don’t need an ORM or a library for websockets, etc.—the framework gives you all of that and it’s very stable. 
+    I come from environments where it’s not unusual to change the ORM or even the framework itself. 
+    Where decoupling is extremely important, this makes me wonder if it matters as much in an ecosystem like Ruby’s, 
+    where you’re not going to switch the ORM or the framework because everything revolves around Rails, 
+    and at the same time, the tools are very stable (from what I’ve seen so far).
+</p>
+
+<p>
+    This makes me wonder: if there are applications handling huge amounts of data in the Rails ecosystem, 
+    with many developers maintaining the code, everything works, companies grow, and money is made, 
+    then maybe this idea of decoupled architecture is just something that developers like to promote to seem “cool”? Hahaha.
+</p>
+
+<p>
+    Well… personally, I don’t think so, for several reasons:
+</p>
+
+<ul>
+    <li>Not just for testability, but for maintainability. For example, even if a library is very stable, it may change, 
+        and if everything is tightly coupled, updating it might require changing many parts of your code.</li>
+    <li>Having unit tests that don’t depend on any database or other infrastructure, so they are lightweight 
+        and you can test the business logic and its behavior in isolation.</li>
+    <li>Being able to replace implementations easily (for example, changing the database, queue system, or an external provider) 
+        without affecting the rest of the application.</li>
+    <li>Making the code easier to read and understand: each layer or module has a clear responsibility, 
+        reducing cognitive complexity.</li>
+    <li>Enabling team scalability: different developers can work on separate modules without interfering with each other, 
+        since dependencies are well defined.</li>
+    <li>Reducing the risk of cascading errors: a localized change shouldn’t break the entire system if dependencies are decoupled.</li>
+</ul>
+
+<p>
+    As we can see, there are many advantages to decoupling our code. Returning to the Rails ecosystem, 
+    we can look at how Shopify addressed this. Shopify proposed an architecture for decoupling, 
+    though I think they removed the link, but <a href="https://world.hey.com/jorge/smelling-rails-smells-0ffacec5" target="_blank">I found this</a>, 
+    which is like a “complaint” about the architecture haha, and also <a href="http://shopify-upgrow-docs.s3-website-ap-northeast-1.amazonaws.com/the-missing-pieces/" target="_blank">this one</a>.
+    Basically, Shopify proposes an architecture based on "actions," which are "use cases," keeping business logic in the models (not Active Record), 
+    and using the repository pattern to encapsulate Active Record. In other words, it’s a clean architecture.
+</p>
+
+<h3>Writing Good Tests: Rails Way vs Clean Architecture</h3>
+
+<p>
+    After understanding why the test pyramid is important, why we need mostly unit tests, and why decoupling matters, 
+    let's see how we could write good tests in practice.
+</p>
+
+<p>
+    Before diving into the examples, I want to clarify that I come from an environment where I always worked with clean architecture 
+    and tactical DDD patterns (and some strategic ones). What I will show here is mainly influenced by clean architecture principles, 
+    similar to what Shopify proposed.
+</p>
+
+<h4>The Typical Rails Way</h4>
+
+<p>
+    In a standard Rails project, logic is often mixed in Active Record models or controllers. 
+    This makes unit testing difficult because the code is tightly coupled with the database and other infrastructure.
+</p>
+
+<pre><code class="language-ruby">
+# app/models/order.rb
+class Order &lt; ApplicationRecord
+  has_many :order_items
+
+  def total_amount
+    order_items.sum(&quot;quantity * price&quot;)
+  end
+
+  def pay!
+    # directly calls payment gateway
+    result = PaymentGateway.charge(user_id: user_id, amount: total_amount)
+    raise &quot;Payment failed&quot; unless result.success?
+
+    update!(status: &quot;paid&quot;)
+  end
+end
+</code></pre>
+
+<pre><code class="language-ruby">
+# spec/models/order_spec.rb
+require 'rails_helper'
+
+RSpec.describe Order, type: :model do
+  describe "#pay!" do
+    let(:order) { Order.create!(user_id: 1) }
+    let!(:item) { order.order_items.create!(product_id: 1, quantity: 2, price: 10) }
+
+    it "updates the order status to paid when payment succeeds" do
+      result = double("PaymentResult", success?: true)
+      allow(PaymentGateway).to receive(:charge).and_return(result)
+
+      order.pay!
+
+      expect(order.status).to eq("paid")
+    end
+
+    it "raises an error when payment fails" do
+      result = double("PaymentResult", success?: false)
+      allow(PaymentGateway).to receive(:charge).and_return(result)
+
+      expect { order.pay! }.to raise_error("Payment failed")
+    end
+  end
+end
+
+</code></pre>
+
+<p>
+    Notice that tests depend on the database and possibly external services. They are slower, harder to isolate, and tightly coupled to Rails internals.
+</p>
+
+<h4>Clean Architecture Way</h4>
+
+<p>
+    In contrast, with Clean Architecture, the business logic lives in entities and use cases. 
+    Active Record or other frameworks are just infrastructure adapters. Tests are fast, isolated, and easy to maintain.
+</p>
+
+<pre><code class="language-ruby">
+# src/domain/order_entity.rb
+class OrderEntity
+  attr_reader :user_id, :items, :total_amount, :status
+
+  def initialize(user_id:, items:)
+    raise &quot;No items provided&quot; if items.empty?
+
+    @user_id = user_id
+    @items = items
+    @total_amount = calculate_total
+    @status = &quot;pending&quot;
+  end
+
+  def pay(payment_charger)
+    result = payment_charger.charge(user_id: user_id, amount: total_amount)
+    raise &quot;Payment failed&quot; unless result.success?
+
+    @status = &quot;paid&quot;
+  end
+
+  private
+
+  def calculate_total
+    items.sum { |item| item.price * item[:quantity] }
+  end
+end
+</code></pre>
+
+<pre><code class="language-ruby"></code>
+# src/domain/order_repository.rb
+# Abstract repository (interface)
+class OrderRepository
+  def save(order_entity)
+    raise NotImplementedError, "Subclasses must implement the save method"
+  end
+end
+</code></pre>
+
+<pre><code class="language-ruby">
+# src/infrastructure/active_record_order_repository.rb
+class ActiveRecordOrderRepository < OrderRepository
+  def save(order_entity)
+    record = Order.find_or_initialize_by(id: order_entity.id)
+    record.assign_attributes(
+      user_id: order_entity.user_id,
+      items: order_entity.items,
+      total_amount: order_entity.total_amount,
+      status: order_entity.status
+    )
+    record.save!
+  end
+end
+</code></pre>
+
+<pre><code class="language-ruby">
+# src/application/create_order.rb
+class CreateOrder
+  def initialize(order_repository:, payment_charger:, event_bus:)
+    @order_repository = order_repository
+    @payment_charger = payment_charger
+    @event_bus = event_bus
+  end
+
+  def call(input)
+    order = OrderEntity.new(user_id: input[:user_id], items: input[:items])
+    order.pay(@payment_charger)
+
+    @order_repository.create(order)
+    @event_bus.publish(:order_created, order_id: order.object_id, user_id: order.user_id, total: order.total_amount)
+  end
+end
+</code></pre>
+
+<p>
+  NOTE: In this example, we pass a <strong>payment_charger</strong> (an interface or abstract class) to the entity to process the payment. 
+  This allows the entity to remain independent of any specific payment implementation, making it easier to test and replace implementations if needed.
+</p>
+<p>
+  Additionally, we introduce the concept of an <strong>event bus</strong>. The entity publishes events that other objects can subscribe to, 
+  without needing to know about them. This further decouples responsibilities and enforces the <strong>Single Responsibility Principle</strong>, 
+  as the entity focuses solely on business logic and the event handlers take care of side effects like notifications, logging, or further processing.
+</p>
+<p>Besides that, another important point is that the use case just orchestrates the things, while the business logic resides in the entity, avoiding anemic models.</p>
+
+<pre><code class="language-ruby">
+# spec/application/create_order_spec.rb
+
+RSpec.describe CreateOrder do
+  let(:order_repository) { FakeOrderRepository.new }
+  let(:payment_service) { FakePaymentService.new }
+  let(:event_bus) { EventBus.new }
+  let(:use_case) { CreateOrder.new(order_repository: order_repository, payment_service: payment_service, event_bus: event_bus) }
+  let(:input) { { user_id: 1, items: [{ product_id: 1, quantity: 2 }] } }
+
+  it &quot;raises error if no items are provided&quot; do
+    expect { use_case.call(user_id: 1, items: []) }.to raise_error(&quot;No items provided&quot;)
+  end
+
+  it &quot;creates an order, pays it, and publishes an event&quot; do
+    published_events = []
+    event_bus.subscribe(:order_created) { |payload| published_events << payload }
+
+    order = use_case.call(input)
+
+    expect(order.status).to eq(&quot;paid&quot;)
+    expect(order.total_amount).to eq(20)
+    expect(order_repository.orders.size).to eq(1)
+    expect(published_events.size).to eq(1)
+    expect(published_events.first[:total]).to eq(order.total_amount)
+  end
+
+  it &quot;raises error if payment fails&quot; do
+    failing_payment_service = FakePaymentService.new(success: false)
+    use_case = CreateOrder.new(order_repository: order_repository, payment_service: failing_payment_service, event_bus: event_bus)
+
+    expect { use_case.call(input) }.to raise_error(&quot;Payment failed&quot;)
+  end
+end
+</code></pre>
+
+<p>NOTE: One important thing <a href="https://backend-engineering-chronicles.github.io/2024/11/16/advantages-of-using-custom-test-doubles.html">here</a> is that I don't use test doubles provided by the framework, and here is my explanation of why I prefer to use my own test doubles.</p>
+
+<p>
+    With this approach, unit tests are fast, isolated, and focused on the business logic. 
+    The infrastructure (database, Active Record, external services) is just injected and can be replaced or mocked easily. 
+    This aligns perfectly with the principles of the test pyramid and Clean Architecture.
+</p>
+
+<h3>How can I achieve a solid test suite?</h3>
+
+<p>
+  In this section, let's explore how to build a solid test suite following the test pyramid. 
+  It's important not only to test the right things in each layer, but also to know which exceptions or failures make sense to cover.
+</p>
+
+<ul>
+  <li>
+    <strong>Unit Tests (Base of the Pyramid)</strong>: 
+    These tests focus on the business logic of individual components in isolation. 
+    For example, in the <em>CreateOrder</em> use case, you would test that it calculates totals correctly, handles payment logic properly, 
+    and raises errors when necessary. Here, it makes sense to test exceptions related to business rules or validation, 
+    like a payment failing or invalid order data. You generally <em>do not</em> test database interactions, external services, or component wiring here.
+    We double our these dependencies.
+  </li>
+  <li>
+    <strong>Integration Tests (Middle Layer)</strong>: 
+    These tests check how different components collaborate. 
+    For instance, you could test that <em>CreateOrder</em> correctly orchestrates the entity, repository, payment service, and event bus. 
+    Here, you may test exceptions like repository failures, failed external service calls, or event publishing issues. 
+    You <em>do not</em> need to cover internal business logic already verified by unit tests.
+  </li>
+  <li>
+    <strong>Acceptance Tests (Top Layer)</strong>: 
+    These tests ensure that the system works correctly from the user's perspective. 
+    For example, creating an order through an API endpoint and verifying that it is persisted, payment is processed, and events are triggered. 
+    Here, it makes sense to test that the endpoint responds with the correct HTTP status and payload, 
+    and that any errors (payment rejected, invalid input, unauthorized access, etc.) are properly returned to the user. 
+    You <em>do not</em> need to retest the internal business logic of the entity or use case, 
+    since that is already covered by unit tests. 
+    The main purpose of acceptance tests is to validate the **end-to-end flow including the HTTP layer**, ensuring the system works as expected from the client’s point of view.
+  </li>
+</ul>
+
+<p>
+  The table below summarizes what to focus on and what exceptions to test in each layer:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Test Focus</th>
+      <th>Exceptions / Errors to Test</th>
+      <th>Do Not Test</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Unit</td>
+      <td>Pure logic of entity/use case</td>
+      <td>Business rules, validation, expected errors (e.g., invalid order data, payment failure)</td>
+      <td>Database, external services, component wiring</td>
+    </tr>
+    <tr>
+      <td>Integration</td>
+      <td>Component collaboration</td>
+      <td>Repository failures, external service errors, event bus issues</td>
+      <td>Internal entity logic already covered by unit tests</td>
+    </tr>
+    <tr>
+        <td>Acceptance</td>
+        <td>Full user flow including API endpoints, HTTP response, and client interactions</td>
+        <td>User-facing errors and flow-breaking issues, such as invalid input, unauthorized access, payment rejected, DB or external service unavailable</td>
+        <td>Internal business logic of entities or use cases (already covered by unit tests), detailed component wiring</td>
+    </tr>
+
+  </tbody>
+</table>
+
+<p>
+  By clearly defining what to test and what not to test at each layer, and including user-facing errors in E2E tests, 
+  you ensure a fast, reliable, and maintainable test suite that provides confidence at every level of the system.
+</p>
+
+<h3>Summary</h3>
+
+<p>
+  In summary, building a solid test suite is not just about writing tests for the sake of coverage. 
+  It's about understanding <strong>why testing is important</strong>, knowing the <strong>different types of tests</strong> available, and structuring them according to the <strong>test pyramid</strong> to maximize speed, reliability, and maintainability. 
+  Decoupling your code is essential to make testing feasible, whether at the unit, integration, or acceptance level. 
+  By following these principles and focusing on what to test in each layer, you can ensure your code is robust, easier to maintain, and ready to scale as your application grows. 
+  A well-structured test suite gives you confidence that changes won’t break existing functionality and that your system behaves correctly from the perspective of both developers and users.
+</p>
