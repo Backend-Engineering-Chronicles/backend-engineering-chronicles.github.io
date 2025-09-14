@@ -11,7 +11,7 @@ background: "/img/posts/01.jpg"
 <h2>Linking software architecture with testing strategies for more reliable systems</h2>
 
 <p>
-    In this post I want to talk about decoupling, testing and test pyramid. I would like to answer some questions why is it so important and how to do it. So based on that the points in this post these will be:
+    In this post, I want to talk about decoupling, testing, and the test pyramid. I’d like to answer why they are important and how to approach them. Based on that, the main points of this post will be:
 </p>
 
 <ul>
@@ -131,9 +131,9 @@ background: "/img/posts/01.jpg"
 <p>
     Currently, in my day-to-day work, I’m on a Rails project, which is a completely different ecosystem 
     from what I’ve worked with in the past, for several reasons. For example, Rails provides everything you need to develop: 
-    you don’t need an ORM or a library for websockets, etc.—the framework gives you all of that and it’s very stable. 
+    you don’t need an ORM or a library for websockets, etc., the framework gives you all of that and it’s very stable. 
     I come from environments where it’s not unusual to change the ORM or even the framework itself. 
-    Where decoupling is extremely important, this makes me wonder if it matters as much in an ecosystem like Ruby’s, 
+    Where decoupling is extremely important, this makes me wonder if it matters as much in an ecosystem like Ruby, 
     where you’re not going to switch the ORM or the framework because everything revolves around Rails, 
     and at the same time, the tools are very stable (from what I’ve seen so far).
 </p>
@@ -154,12 +154,14 @@ background: "/img/posts/01.jpg"
     <li>Having unit tests that don’t depend on any database or other infrastructure, so they are lightweight 
         and you can test the business logic and its behavior in isolation.</li>
     <li>Being able to replace implementations easily (for example, changing the database, queue system, or an external provider) 
-        without affecting the rest of the application.</li>
+        without affecting the rest of the application. You just need to change the adapter.</li>
     <li>Making the code easier to read and understand: each layer or module has a clear responsibility, 
         reducing cognitive complexity.</li>
     <li>Enabling team scalability: different developers can work on separate modules without interfering with each other, 
         since dependencies are well defined.</li>
     <li>Reducing the risk of cascading errors: a localized change shouldn’t break the entire system if dependencies are decoupled.</li>
+    <li>Facilitates test automation in CI/CD:
+        When the code is decoupled, tests are faster and don’t depend on external infrastructure, which speeds up continuous integration pipelines.</li>
 </ul>
 
 <p>
@@ -171,7 +173,7 @@ background: "/img/posts/01.jpg"
     and using the repository pattern to encapsulate Active Record. In other words, it’s a clean architecture.
 </p>
 
-<h3>Writing Good Tests: Rails Way vs Clean Architecture</h3>
+<h3>How can I write good tests?</h3>
 
 <p>
     After understanding why the test pyramid is important, why we need mostly unit tests, and why decoupling matters, 
@@ -179,9 +181,9 @@ background: "/img/posts/01.jpg"
 </p>
 
 <p>
-    Before diving into the examples, I want to clarify that I come from an environment where I always worked with clean architecture 
+    Before diving into the examples, I want to clarify that I come from an environment where in the last years I worked with clean architecture 
     and tactical DDD patterns (and some strategic ones). What I will show here is mainly influenced by clean architecture principles, 
-    similar to what Shopify proposed.
+    more or less similar to what Shopify proposed.
 </p>
 
 <h4>The Typical Rails Way</h4>
@@ -240,8 +242,35 @@ end
 </code></pre>
 
 <p>
-    Notice that tests depend on the database and possibly external services. They are slower, harder to isolate, and tightly coupled to Rails internals.
+  Notice that these tests rely on the real database and framework internals. 
+  Even though we stub the payment gateway, the test still creates records in the database 
+  and depends on Active Record behavior. This makes the test slower, harder to isolate, and more brittle.
 </p>
+
+<p>
+  The problem is not only performance: conceptually, this is not a true unit test. 
+  Instead of testing just the business logic of the <code>Order</code> entity, 
+  we are also testing persistence, Rails callbacks, and schema configuration. 
+  That means a failure in the database, a migration change, or even Rails internals can cause the test to break,
+  even if the business logic itself is correct.
+</p>
+
+<p>
+  In practice, this approach leads to:
+</p>
+
+<ul>
+  <li><strong>Coupling</strong> between business logic and the database/framework.</li>
+  <li><strong>Overlapping responsibilities</strong> in tests (mixing logic validation with persistence validation).</li>
+  <li><strong>Reduced clarity</strong>, because it’s harder to tell whether a failure is due to logic or infrastructure.</li>
+</ul>
+
+<p>
+  That’s why Rails provides helpers like <code>rails_helper</code> to manage this complexity. 
+  But the underlying issue remains: you are testing production objects in a coupled way, 
+  rather than isolating the business logic (Rails provide factory bot to encapsulate production objects too, but you still use active record models).
+</p>
+
 
 <h4>Clean Architecture Way</h4>
 
@@ -325,7 +354,7 @@ end
 </code></pre>
 
 <p>
-  NOTE: In this example, we pass a <strong>payment_charger</strong> (an interface or abstract class) to the entity to process the payment. 
+  NOTE: In this example, we pass a <strong>payment_charger</strong> (an interface) to the entity to process the payment. 
   This allows the entity to remain independent of any specific payment implementation, making it easier to test and replace implementations if needed.
 </p>
 <p>
@@ -333,7 +362,7 @@ end
   without needing to know about them. This further decouples responsibilities and enforces the <strong>Single Responsibility Principle</strong>, 
   as the entity focuses solely on business logic and the event handlers take care of side effects like notifications, logging, or further processing.
 </p>
-<p>Besides that, another important point is that the use case just orchestrates the things, while the business logic resides in the entity, avoiding anemic models.</p>
+<p>Besides that, another important point is that the use case just orchestrates the things, while the business logic resides in the entity, avoiding anemic models. We move the business logic to deeper layer, the domain.</p>
 
 <pre><code class="language-ruby">
 # spec/application/create_order_spec.rb
@@ -341,7 +370,7 @@ end
 RSpec.describe CreateOrder do
   let(:order_repository) { FakeOrderRepository.new }
   let(:payment_service) { FakePaymentService.new }
-  let(:event_bus) { EventBus.new }
+  let(:event_bus) { FakeEventBus.new }
   let(:use_case) { CreateOrder.new(order_repository: order_repository, payment_service: payment_service, event_bus: event_bus) }
   let(:input) { { user_id: 1, items: [{ product_id: 1, quantity: 2 }] } }
 
@@ -350,9 +379,6 @@ RSpec.describe CreateOrder do
   end
 
   it &quot;creates an order, pays it, and publishes an event&quot; do
-    published_events = []
-    event_bus.subscribe(:order_created) { |payload| published_events << payload }
-
     order = use_case.call(input)
 
     expect(order.status).to eq(&quot;paid&quot;)
@@ -371,10 +397,10 @@ RSpec.describe CreateOrder do
 end
 </code></pre>
 
-<p>NOTE: One important thing <a href="https://backend-engineering-chronicles.github.io/2024/11/16/advantages-of-using-custom-test-doubles.html">here</a> is that I don't use test doubles provided by the framework, and here is my explanation of why I prefer to use my own test doubles.</p>
+<p>NOTE: One important thing here is that I don't use test doubles provided by the framework, and <a href="https://backend-engineering-chronicles.github.io/2024/11/16/advantages-of-using-ccustom-test-doubles.html target="_blank">here</a> is my explanation of why I prefer to use my own test doubles.</p>
 
 <p>
-    With this approach, unit tests are fast, isolated, and focused on the business logic. 
+    With this approach (the Clean Architecture one), unit tests are fast, isolated, and focused on the business logic. 
     The infrastructure (database, Active Record, external services) is just injected and can be replaced or mocked easily. 
     This aligns perfectly with the principles of the test pyramid and Clean Architecture.
 </p>
@@ -392,8 +418,8 @@ end
     These tests focus on the business logic of individual components in isolation. 
     For example, in the <em>CreateOrder</em> use case, you would test that it calculates totals correctly, handles payment logic properly, 
     and raises errors when necessary. Here, it makes sense to test exceptions related to business rules or validation, 
-    like a payment failing or invalid order data. You generally <em>do not</em> test database interactions, external services, or component wiring here.
-    We double our these dependencies.
+    like a payment failing or invalid order data. You <em>do not</em> test database interactions, external services, or component wiring here.
+    We double these dependencies.
   </li>
   <li>
     <strong>Integration Tests (Middle Layer)</strong>: 
@@ -410,7 +436,7 @@ end
     and that any errors (payment rejected, invalid input, unauthorized access, etc.) are properly returned to the user. 
     You <em>do not</em> need to retest the internal business logic of the entity or use case, 
     since that is already covered by unit tests. 
-    The main purpose of acceptance tests is to validate the **end-to-end flow including the HTTP layer**, ensuring the system works as expected from the client’s point of view.
+    The main purpose of acceptance tests is to validate the end-to-end flow including the HTTP layer, ensuring the system works as expected from the client’s point of view.
   </li>
 </ul>
 
@@ -446,7 +472,6 @@ end
         <td>User-facing errors and flow-breaking issues, such as invalid input, unauthorized access, payment rejected, DB or external service unavailable</td>
         <td>Internal business logic of entities or use cases (already covered by unit tests), detailed component wiring</td>
     </tr>
-
   </tbody>
 </table>
 
