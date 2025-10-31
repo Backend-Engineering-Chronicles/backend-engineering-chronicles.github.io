@@ -8,227 +8,208 @@ timezone: Europe/Madrid
 background: "/img/posts/01.jpg"
 ---
 
-> “Duplicate messages aren’t a bug — they’re the price of reliability.”
+<blockquote>
+  <p>“Duplicate messages aren’t a bug, they’re the price of reliability.”</p>
+</blockquote>
 
----
+<hr />
 
-## Introduction
+<h2>Introduction</h2>
+<p>In distributed systems, “never lose a message” sounds simple, until you try to guarantee it.
+Networks fail, consumers crash, brokers restart, and suddenly you’re facing duplicated or lost events.</p>
+<p>In this article, we’ll explore how to build <strong>a reliable, idempotent, and ordered message pipeline</strong> using <strong>RabbitMQ</strong>.
+We’ll go through real-world failure scenarios and the patterns that keep your system consistent, even under chaos.</p>
 
-In distributed systems, “never lose a message” sounds simple, until you try to guarantee it.  
-Networks fail, consumers crash, brokers restart, and suddenly you’re facing duplicated or lost events.
+<hr />
 
-In this article, we’ll explore how to build **a reliable, idempotent, and ordered message pipeline** using **RabbitMQ**.  
-We’ll go through real-world failure scenarios and the patterns that keep your system consistent, even under chaos.
+<h2>1. Understanding the Message Lifecycle</h2>
+<p>A message travels across three stages:</p>
+<ol>
+  <li><strong>Producer → Broker</strong> (publishing)</li>
+  <li><strong>Broker → Consumer</strong> (delivery)</li>
+  <li><strong>Consumer → Database / Side-effect</strong> (processing)</li>
+</ol>
+<p>Each stage can fail independently. Let’s see how to protect all of them.</p>
 
----
+<hr />
 
-## 1. Understanding the Message Lifecycle
+<h2>2. Producer Safety, The Outbox Pattern</h2>
+<p>Publishing a message outside of your main transaction is dangerous:</p>
+<ul>
+  <li>The transaction could be committed, but the message never gets sent.</li>
+  <li>Or the message is sent, but the transaction rollback.</li>
+</ul>
+<p>To solve this, we use the <strong>Outbox Pattern</strong>: store outgoing messages <strong>in your database</strong>, within the same transaction that triggers them.</p>
 
-A message travels across three stages:
-
-1. **Producer → Broker** (publishing)
-2. **Broker → Consumer** (delivery)
-3. **Consumer → Database / Side-effect** (processing)
-
-Each stage can fail independently. Let’s see how to protect all of them.
-
----
-
-## 2. Producer Safety, The Outbox Pattern
-
-Publishing a message outside of your main transaction is dangerous:
-
-- The transaction could be committed, but the message never gets sent.
-- Or the message is sent, but the transaction rollback.
-
-To solve this, we use the **Outbox Pattern**:
-store outgoing messages **in your database**, within the same transaction that triggers them.
-
-```ruby
-# app/services/orders/create_order.rb
+<pre><code class="language-ruby"># app/services/orders/create_order.rb
 class CreateOrder
-  def call(order_params)
-    ActiveRecord::Base.transaction do
-      order = Order.create!(order_params)
+  def call(order_params)
+    ActiveRecord::Base.transaction do
+      order = Order.create!(order_params)
 
-      OutboxEvent.create!(
-        event_type: "OrderCreated",
-        payload: { id: order.id, total: order.total }
-      )
-    end
-  end
-end```
+      OutboxEvent.create!(
+        event_type: "OrderCreated",
+        payload: { id: order.id, total: order.total }
+      )
+    end
+  end
+end</code></pre>
 
-Then, a background job (dispatcher) safely publishes these events to RabbitMQ with publisher confirms:
+<p>Then, a background job (dispatcher) safely publishes these events to RabbitMQ with publisher confirms:</p>
 
-```ruby
-# app/jobs/outbox_dispatcher.rb
+<pre><code class="language-ruby"># app/jobs/outbox_dispatcher.rb
 class OutboxDispatcher
-  def call
-    connection = Bunny.new.start
-    channel = connection.create_channel
-    exchange = channel.direct('events', durable: true)
+  def call
+    connection = Bunny.new.start
+    channel = connection.create_channel
+    exchange = channel.direct('events', durable: true)
 
-    OutboxEvent.pending.find_each do |event|
-      channel.confirm_select
-      exchange.publish(event.payload.to_json,
-                       routing_key: event.event_type,
-                       persistent: true)
+    OutboxEvent.pending.find_each do |event|
+      channel.confirm_select
+      exchange.publish(event.payload.to_json,
+                       routing_key: event.event_type,
+                       persistent: true)
 
-      channel.wait_for_confirms
-      event.mark_as_sent!
-    end
-  ensure
-    connection.close
-  end
-end```
+      channel.wait_for_confirms
+      event.mark_as_sent!
+    end
+  ensure
+    connection.close
+  end
+end</code></pre>
 
-NOTE: Another popular alternative is to use tools like https://debezium.io/ to send the messages from the outbox table to RabbitMq.
- Guarantees:
+<p>NOTE: Another popular alternative is to use tools like <a href="https://debezium.io/" target="_blank" rel="noopener">Debezium</a> to send the messages from the outbox table to RabbitMq.</p>
+<p><strong>Guarantees:</strong></p>
+<ul>
+  <li>No messages are lost between your app and RabbitMQ.</li>
+  <li>Everything is transactional and recoverable.</li>
+</ul>
 
-No messages are lost between your app and RabbitMQ.
+<hr />
 
-Everything is transactional and recoverable.
+<h2>3. Broker Safety, Durability and Persistence</h2>
+<p>RabbitMQ won’t magically persist everything, you need to configure it properly.</p>
+<p>Make sure:</p>
+<ul>
+  <li>The queue is durable</li>
+  <li>The message is persistent</li>
+</ul>
 
-## 3. Broker Safety, Durability and Persistence
+<pre><code class="language-ruby">channel.queue('orders', durable: true)
 
-RabbitMQ won’t magically persist everything, you need to configure it properly.
+exchange.publish(payload.to_json, persistent: true)</code></pre>
 
-Make sure:
+<p><strong>Guarantees:</strong></p>
+<ul>
+  <li>Messages survive broker restarts.</li>
+  <li>No loss even if RabbitMQ crashes mid-flight.</li>
+</ul>
 
-- The queue is durable
-- The message is persistent
+<hr />
 
-```ruby
-channel.queue('orders', durable: true)
+<h2>4. Consumer Safety, Acks and Idempotency</h2>
+<p>Once RabbitMQ delivers a message, it expects an acknowledgement (ack). If the consumer crashes before sending the ack, RabbitMQ re-delivers the message.</p>
+<p>That means:</p>
+<ul>
+  <li>RabbitMQ guarantees at-least-once delivery, not exactly-once.</li>
+</ul>
+<p>So you must design your consumers to be idempotent, able to process the same message multiple times without side effects.</p>
 
-exchange.publish(payload.to_json, persistent: true)```
+<p>Example: Idempotent Consumer in Ruby</p>
 
-Guarantees:
+<pre><code class="language-ruby">class OrderCreatedConsumer
+  def call(delivery_info, properties, body)
+    payload = JSON.parse(body)
+    message_id = properties.message_id
 
-- Messages survive broker restarts.
-- No loss even if RabbitMQ crashes mid-flight.
+    return if ProcessedMessage.exists?(message_id: message_id) # Idempotency check
 
-## 4. Consumer Safety, Acks and Idempotency
+    ActiveRecord::Base.transaction do
+      ProcessedMessage.create!(message_id: message_id)
+      OrderProcessor.new.call(payload)
+    end
 
-Once RabbitMQ delivers a message, it expects an acknowledgement (ack). If the consumer crashes before sending the ack, RabbitMQ re-delivers the message.
+    channel.ack(delivery_info.delivery_tag)
+  rescue => e
+    channel.reject(delivery_info.delivery_tag, requeue: true)
+  end
+end</code></pre>
 
-That means:
+<p>NOTE: Another valid approach is to use a create_or_update operation based on a unique key in the payload.
+The key idea is that processing the same message twice must produce the same result, without creating duplicates or inconsistent state.</p>
+<p><strong>Guarantees:</strong></p>
+<ul>
+  <li>Duplicates are harmless.</li>
+</ul>
+<p>Messages should be acknowledged only after the database transaction commits successfully.
+This ensures that if the consumer crashes during processing, RabbitMQ will re-deliver the message, and thanks to idempotency checks, re-processing it will not cause duplicate effects.</p>
 
-- RabbitMQ guarantees at-least-once delivery, not exactly-once.
+<hr />
 
-So you must design your consumers to be idempotent, able to process the same message multiple times without side effects.
+<h2>5. Message Ordering: Beyond "One Consumer per Queue"</h2>
+<p>RabbitMQ guarantees FIFO only within a single queue and a single consumer.</p>
+<p>Let’s look at a real example:</p>
 
-Example: Idempotent Consumer in Ruby
-
-```ruby
-class OrderCreatedConsumer
-  def call(delivery_info, properties, body)
-    payload = JSON.parse(body)
-    message_id = properties.message_id
-
-    return if ProcessedMessage.exists?(message_id: message_id) # Idempotency check
-
-    ActiveRecord::Base.transaction do
-      ProcessedMessage.create!(message_id: message_id)
-      OrderProcessor.new.call(payload)
-    end
-
-    channel.ack(delivery_info.delivery_tag)
-  rescue => e
-    channel.reject(delivery_info.delivery_tag, requeue: true)
-  end
-end```
-
-NOTE: Another valid approach is to use a create_or_update operation based on a unique key in the payload.
-The key idea is that processing the same message twice must produce the same result, without creating duplicates or inconsistent state.
-
-Guarantees:
-
-- Duplicates are harmless.
-
-
-Messages should be acknowledged only after the database transaction commits successfully.
-This ensures that if the consumer crashes during processing, RabbitMQ will re-deliver the message, and thanks to idempotency checks, re-processing it will not cause duplicate effects.
-
-## 5. Message Ordering: Beyond "One Consumer per Queue"
-
-RabbitMQ guarantees FIFO only within a single queue and a single consumer.
-
-Let’s look at a real example:
-
-```
-Use case 1 → publishes message M1
+<pre><code>Use case 1 → publishes message M1
 Subscriber → runs use case 2 → publishes message M2
-Subscriber2 → runs use case 3 → publishes message M3
-```
+Subscriber2 → runs use case 3 → publishes message M3</code></pre>
 
-Now imagine a single queue with multiple consumers:
+<p>Now imagine a single queue with multiple consumers:</p>
+<p>M1, M2, and M3 are enqueued in order.</p>
+<p>RabbitMQ distributes them round-robin across consumers.</p>
+<p>If Consumer 1 is slower than Consumer 2, M3 may finish before M1.</p>
+<p>The observable order of effects breaks, generating bugs.</p>
+<p>This happens because ordering guarantees stop once messages are processed concurrently, even if RabbitMQ delivered them in order.</p>
 
-M1, M2, and M3 are enqueued in order.
+<h3>How to Fix It</h3>
 
-RabbitMQ distributes them round-robin across consumers.
+<h4>Option 1: One Consumer per Queue (Strict FIFO)</h4>
+<p>The simplest solution: one queue + one consumer. For the next reasons:</p>
+<ul>
+  <li>RabbitMQ delivers messages in order.</li>
+  <li>Your consumer processes sequentially.</li>
+  <li>Each message is acked only after successful processing.</li>
+</ul>
+<p>You can also limit concurrency explicitly:</p>
 
-If Consumer 1 is slower than Consumer 2, M3 may finish before M1.
+<pre><code class="language-ruby">channel.prefetch(1)</code></pre>
 
-The observable order of effects breaks, generating bugs.
+<p>This ensures only one unacknowledged message is in flight per consumer.</p>
 
-This happens because ordering guarantees stop once messages are processed concurrently, even if RabbitMQ delivered them in order.
+<h4>Option 2: One Queue per Routing Key (Parallel + Ordered)</h4>
+<p>If you need parallelism and ordering, create one queue per entity or workflow.</p>
+<p>Example: Each user’s or aggregate messages go to their own queue via routing key.</p>
 
-### How to Fix It
-
-Option 1: One Consumer per Queue (Strict FIFO)
-
-The simplest solution: one queue + one consumer. For the next reasons:
-
-- RabbitMQ delivers messages in order.
-- Your consumer processes sequentially.
-- Each message is acked only after successful processing.
-
-You can also limit concurrency explicitly:
-
-```ruby
-channel.prefetch(1)
-```
-
-This ensures only one unacknowledged message is in flight per consumer.
-
-Option 2: One Queue per Routing Key (Parallel + Ordered)
-
-If you need parallelism and ordering, create one queue per entity or workflow.
-
-Example:
-Each user’s or aggregate messages go to their own queue via routing key.
-
-exchange (direct)
+<pre><code>exchange (direct)
 ├── queue_use_case_1 → consumer_use_case_1
 ├── queue_use_case_2 → consumer_use_case_2
-└── queue_use_case_3 → consumer_use_case_3
+└── queue_use_case_3 → consumer_use_case_3</code></pre>
 
-
-All messages for the same key are processed sequentially in the same queue, while messages with different keys are processed in parallel.
+<p>All messages for the same key are processed sequentially in the same queue, while messages with different keys are processed in parallel.
 This can be automated using a consistent hash exchange, which routes messages deterministically by key without requiring a separate queue for each user.
-It ensures that all messages with the same key go to the same queue (preserving order), while different keys are distributed across queues for parallel processing.
+It ensures that all messages with the same key go to the same queue (preserving order), while different keys are distributed across queues for parallel processing.</p>
 
-Another interesting point is that prefetch doesn’t fix ordering. Setting prefetch = 1 limits concurrency, but doesn’t guarantee order if:
+<p>Another interesting point is that prefetch doesn’t fix ordering. Setting prefetch = 1 limits concurrency, but doesn’t guarantee order if:</p>
+<ul>
+  <li>Message processing time varies, or multiple consumers share a queue.</li>
+  <li>Prefetch helps reduce concurrency per consumer, but not across consumers.</li>
+</ul>
 
-- Message processing time varies, or multiple consumers share a queue.
-- Prefetch helps reduce concurrency per consumer, but not across consumers.
-
-Typical example:
-
-Message A arrives, then message B.
+<p>Typical example:</p>
+<pre><code>Message A arrives, then message B.
 Processing A takes 4 seconds.
-Processing B takes 1 second.
+Processing B takes 1 second.</code></pre>
 
-Even though they arrived in order A → B, the completion order will be:
+<p>Even though they arrived in order A → B, the completion order will be:</p>
+<ul>
+  <li>B (1s)</li>
+  <li>A (4s)</li>
+</ul>
+<p>The order is broken, even with prefetch = 1.</p>
 
-B (1s)
-A (4s)
+<hr />
 
-The order is broken, even with prefetch = 1.
-
-## 6. Network Failures, The Real Enemy
+<h2>6. Network Failures, The Real Enemy</h2>
 
 <h3>Common scenarios</h3>
 <table>
@@ -258,22 +239,25 @@ The order is broken, even with prefetch = 1.
   </tbody>
 </table>
 
+<br />
 
-### How to survive
+<h3>How to survive</h3>
+<p>Some strategies:</p>
+<ul>
+  <li>Publisher confirms: ensures the producer knows whether the message reached the broker.</li>
+  <li>Manual acks on consumers: prevents marking a message as processed before it has actually been completed.</li>
+  <li>Retries and DLQs: handle errors without losing messages.</li>
+  <li>Idempotency: key to safely processing duplicate messages without side effects.</li>
+</ul>
+<p><strong>Guarantees:</strong></p>
+<ul>
+  <li>No lost messages even under network instability.</li>
+  <li>Only duplicates, which are safely ignored.</li>
+</ul>
 
-Some strategies:
+<hr />
 
-- Publisher confirms: ensures the producer knows whether the message reached the broker.
-- Manual acks on consumers: prevents marking a message as processed before it has actually been completed.
-- Retries and DLQs: handle errors without losing messages.
-- Idempotency: key to safely processing duplicate messages without side effects.
-
-Guarantees:
-
-- No lost messages even under network instability.
-- Only duplicates, which are safely ignored.
-
-## 7. Putting It All Together
+<h2>7. Putting It All Together</h2>
 
 <h3>Common Risks and Solutions</h3>
 <table>
@@ -294,7 +278,7 @@ Guarantees:
     </tr>
     <tr>
       <td>Lost messages on consume</td>
-      <td>Manual Ack after commit</td>
+      <td>manual Ack after commit</td>
     </tr>
     <tr>
       <td>Duplicates</td>
@@ -311,26 +295,26 @@ Guarantees:
   </tbody>
 </table>
 
+<hr />
 
-## 8. The Reality of Distributed Systems
-
-You can’t have exactly-once semantics in an unreliable network.
+<h2>8. The Reality of Distributed Systems</h2>
+<p>You can’t have exactly-once semantics in an unreliable network.
 What you can have is at-least-once delivery with idempotent consumers,
-and that’s good for real-world systems.
+and that’s good for real-world systems.</p>
+<p>By combining:</p>
+<ul>
+  <li>Outbox pattern</li>
+  <li>Durable queues</li>
+  <li>Persistent messages</li>
+  <li>Manual acks</li>
+  <li>Idempotency</li>
+  <li>Proper ordering strategies</li>
+</ul>
+<p>you achieve no message loss and predictable, consistent behavior, even under failure.</p>
 
-By combining:
+<hr />
 
-- Outbox pattern
-- Durable queues
-- Persistent messages
-- Manual acks
-- Idempotency
-- Proper ordering strategies
-
-you achieve no message loss and predictable, consistent behavior, even under failure.
-
-## Final Thoughts
-Building reliable message-driven systems isn’t about eliminating failure, it’s about making failure safe.
-With RabbitMQ, that means embracing duplicates, ensuring order where it matters, and designing every step to survive a crash, a retry, or a network glitch.
-
-Reliability isn’t magic, it’s discipline.
+<h2>Final Thoughts</h2>
+<p>Building reliable message-driven systems isn’t about eliminating failure, it’s about making failure safe.
+With RabbitMQ, that means embracing duplicates, ensuring order where it matters, and designing every step to survive a crash, a retry, or a network glitch.</p>
+<p><strong>Reliability isn’t magic, it’s discipline.</strong></p>
