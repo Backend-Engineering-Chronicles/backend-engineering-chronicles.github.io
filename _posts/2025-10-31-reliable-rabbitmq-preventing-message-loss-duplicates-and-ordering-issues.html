@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Reliable RabbitMQ: Preventing Message Loss, Duplicates, and Ordering Issues"
-subtitle: "Building a Reliable Messaging System with the Outbox Pattern, Acks, and Durable Queues"
+subtitle: "Building a Reliable Messaging System"
 date: 2025-10-31
 tags: [architecture, rabbitmq, reliability, messaging]
 timezone: Europe/Madrid
@@ -152,7 +152,7 @@ This ensures that if the consumer crashes during processing, RabbitMQ will re-de
 
 <pre><code>Use case 1 → publishes message M1
 Subscriber → runs use case 2 → publishes message M2
-Subscriber2 → runs use case 3 → publishes message M3</code></pre>
+Subscriber → runs use case 3 → publishes message M3</code></pre>
 
 <p>Now imagine a single queue with multiple consumers:</p>
 <p>M1, M2, and M3 are enqueued in order.</p>
@@ -176,36 +176,36 @@ Subscriber2 → runs use case 3 → publishes message M3</code></pre>
 
 <p>This ensures only one unacknowledged message is in flight per consumer.</p>
 
-<h4>Option 2: One Queue per Routing Key (Parallel + Ordered)</h4>
-<p>If you need parallelism and ordering, create one queue per entity or workflow.</p>
-<p>Example: Each user’s or aggregate messages go to their own queue via routing key.</p>
+<p>If you can allow one consumer per queue, you won't have order problems.</p>
+
+<h4>Option 2: One Queue per Side-Effect (Parallel + Safe)</h4>
+<p>If you need parallelism and each queue represents an independent side-effect, you can create one queue per workflow. Each message in a queue triggers a specific side-effect.</p>
 
 <pre><code>exchange (direct)
 ├── queue_use_case_1 → consumer_use_case_1
 ├── queue_use_case_2 → consumer_use_case_2
 └── queue_use_case_3 → consumer_use_case_3</code></pre>
 
-<p>All messages for the same key are processed sequentially in the same queue, while messages with different keys are processed in parallel.
-This can be automated using a consistent hash exchange, which routes messages deterministically by key without requiring a separate queue for each user.
-It ensures that all messages with the same key go to the same queue (preserving order), while different keys are distributed across queues for parallel processing.</p>
+<p>Each queue represents a specific side-effect. 
+Messages are routed to the queue corresponding to the side-effect they trigger. 
+Multiple consumers can process messages in parallel within the same queue without breaking the process logic, 
+because each message is an independent side-effect.</p>
 
-<p>Another interesting point is that prefetch doesn’t fix ordering. Setting prefetch = 1 limits concurrency, but doesn’t guarantee order if:</p>
-<ul>
-  <li>Message processing time varies, or multiple consumers share a queue.</li>
-  <li>Prefetch helps reduce concurrency per consumer, but not across consumers.</li>
-</ul>
+<p>Note: Setting <code>prefetch = 1</code> limits concurrency per consumer but does not guarantee strict ordering. 
+In this model, strict ordering is not required because each message represents an independent side-effect.</p>
 
-<p>Typical example:</p>
-<pre><code>Message A arrives, then message B.
-Processing A takes 4 seconds.
-Processing B takes 1 second.</code></pre>
+<p>Example:</p>
+<pre><code>Queue receives messages: M1a, M1b, M1c
+Consumer A processes M1a → publishes M2a
+Consumer B processes M1b → publishes M2b
+Consumer A processes M1c → publishes M2c
+</code></pre>
 
-<p>Even though they arrived in order A → B, the completion order will be:</p>
-<ul>
-  <li>B (1s)</li>
-  <li>A (4s)</li>
-</ul>
-<p>The order is broken, even with prefetch = 1.</p>
+<p>Even if M2a is published after M2b and M2c, the system works correctly because each message represents an independent side-effect. 
+The logical flow of the process is preserved, regardless of the order in which messages are processed within a queue.</p>
+
+<p>This approach is very good option if you need one or multiple consumers per queue. It's pretty scalable, you can monitorize each queue independently and adjust resources as needed.</p>
+<p>In my experience, this model works well for a variety of use cases, especially when dealing with complex workflows that require high availability and fault tolerance.</p>
 
 <hr />
 
@@ -286,7 +286,7 @@ Processing B takes 1 second.</code></pre>
     </tr>
     <tr>
       <td>Out-of-order processing</td>
-      <td>One consumer per queue or per key</td>
+      <td>One consumer per queue or queue per side-effect</td>
     </tr>
     <tr>
       <td>Network failures</td>
