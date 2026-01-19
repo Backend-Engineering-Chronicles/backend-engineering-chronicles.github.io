@@ -1,0 +1,109 @@
+---
+layout: post
+title: "Building Public APIs: Versioning Strategies and Design"
+subtitle: "A robust approach to API backwards compatibility"
+date: 2026-01-18
+tags: [api, versioning, architecture, ruby, design]
+timezone: Europe/Madrid
+background: "/img/posts/01.jpg"
+---
+
+<h2>Introduction</h2>
+<p>Recently, at work, I faced the challenge of exposing internal functionality of our system through a <strong>Public API</strong>. 
+I really liked the approach we are using, which is why I decided to write this article.</p>
+
+<p>It is nothing new or super innovative; in fact, Stripe's public API works this way.</p>
+
+<p>To truly understand how this works "under the hood", I decided to create an example repository from scratch implementing a robust versioning system. 
+The result is this repository: <a href="https://github.com/mapeveri/public-api-versioning" target="_blank">mapeveri/public-api-versioning</a>.</p>
+
+<hr />
+
+<h2>Benefits of an Explicit Versioning Strategy</h2>
+<p>When you expose your system to the world, versioning is not optional. Implementing a solid strategy offers:</p>
+
+<ul>
+  <li><strong>Frictionless Evolution</strong>: You can improve, refactor, and change your internal business logic without fear of breaking old clients.</li>
+  <li><strong>Backwards Compatibility</strong>: You guarantee that an integration made today will continue working tomorrow, no matter what happens in your backend.</li>
+  <li><strong>Clarity for the consumer</strong>: By using explicit versions (like dates or semantic numbers), the consumer knows exactly what contract they are signing with your API.</li>
+  <li><strong>Clean Codebase (The Stripe Way)</strong>: Instead of filling your controllers with <code>if (version < OLD)</code> statements, you encapsulate legacy logic in isolated transformation classes. This keeps your core business logic clean, testable, and focused on the present.</li>
+</ul>
+
+<hr />
+
+<h2>How does it work conceptually?</h2>
+<p>The core idea is not to keep multiple copies of your code (a v1 controller, a v2 one, etc.); that would be unmanageable. 
+Instead, the most maintainable approach is to have <strong>a single version of the code (the most recent one)</strong> and apply <strong>transformations</strong> to adapt that version to what the old client expects.</p>
+
+<h3>The Request Flow</h3>
+
+<ol>
+  <li><strong>Request</strong>: The client sends data in the "old" format.
+    <ul>
+      <li>We apply <strong>upward</strong> transformations (from old to new). This involves renaming fields, ensuring mandatory parameters (filling defaults if needed), or restructuring JSON to match what the <strong>current</strong> controller expects. Ideally, the controller never knows it's dealing with a legacy request.</li>
+    </ul>
+  </li>
+  <li><strong>Processing</strong>: The controller executes business logic using the newest version of the code. It is completely agnostic of the client's version.</li>
+  <li><strong>Response</strong>: The system generates a response with the new structure.
+    <ul>
+      <li>We apply <strong>downward</strong> transformations (from new to old). We take the new data structure and remove fields that didn't exist in the old version, combine fields (e.g., <code>first_name</code> + <code>last_name</code> -> <code>name</code>), or rename them back so the client receives exactly what they expect.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>A Ruby Example (Pseudocode)</h3>
+
+<p>To handle these transformations cleanly, we define each version in its own separate file. This keeps the logic isolated and easy to navigate.</p>
+
+<p>For example, if in version `2025-01-01` we had `name`, but today (`2026-01-01`) we split that into `first_name` and `last_name`, we would create a file like <code>app/controllers/api/v1/versions/version20250101.rb</code>:</p>
+
+<pre><code class="language-ruby">
+# Definition of the old version
+class Version20250101 &lt; Version
+  timestamp "2025-01-01"
+
+  # Input Transformation (Request): 
+  # Converts what the user sends ("name") into what my current controller expects ("first_name", "last_name")
+  payload do |t|
+    t.split_field :name, into: [:first_name, :last_name]
+  end
+
+  # Output Transformation (Response):
+  # Converts what my controller returns ("first_name", "last_name") into what the old user expects ("name")
+  response do |t|
+    t.combine_fields :first_name, :last_name, into: :name
+  end
+end
+</code></pre>
+
+<p>With this pattern, your business logic is always clean and updated, and the "technical debt" of supporting old versions is encapsulated in these transformation classes.</p>
+
+<hr />
+
+<h2>Hybrid Versioning: The Best of Both Worlds</h2>
+
+<p>A common question is: <em>"Can I combine this with URL versioning (v1, v2)?"</em>. The answer is <strong>yes</strong>.</p>
+
+<p>You can use <strong>Major Versions</strong> (v1, v2) for paradigm shifts (e.g., moving from REST to GraphQL, or a complete rewrite of your resource IDs) and <strong>Date Versions</strong> for the continuous evolution within that major version.</p>
+
+<p>Stripe, for example, has kept `v1` in their URL for over a decade. They haven't needed a `v2` because their transformation system handles evolution so well. However, having that `v1` namespace acts as a safety valve: if they ever need to break the world, they have `v2` reserved.</p>
+
+<hr />
+
+<h2>Deprecation and Sunsetting</h2>
+<p>Supporting backward compatibility doesn't mean supporting everything forever. You need a strategy to communicate end-of-life.</p>
+
+<p>This pattern allows for granular deprecation:</p>
+<ul>
+  <li><strong>Soft Deprecation (Headers)</strong>: You can configure specific versions to attach standard HTTP headers like <code>Warning</code> or <code>Sunset</code>. This alerts consumers monitoring their logs that they are using a dying version without breaking their automation.</li>
+  <li><strong>Hard Deprecation (410 Gone)</strong>: When an endpoint's functionality is fundamentally removed and cannot be emulated via transformations, you can configure that specific legacy version to return <code>410 Gone</code>, providing a clear signal to the client.</li>
+</ul>
+
+<p>This observability is key: instead of silently failing, your API actively communicates its lifecycle to your consumers.</p>
+
+<hr />
+
+<h2>Conclusion</h2>
+<p>Implementing a public API requires a mindset shift: you go from thinking only about functionality to thinking about <strong>contracts and stability</strong>. 
+Versioning via transformations is a powerful strategy because it decouples your software's evolution from the public interface you've promised to maintain.</p>
+
