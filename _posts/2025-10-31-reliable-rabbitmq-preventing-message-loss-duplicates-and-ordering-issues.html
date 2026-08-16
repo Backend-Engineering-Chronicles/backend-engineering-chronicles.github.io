@@ -147,7 +147,7 @@ This ensures that if the consumer crashes during processing, RabbitMQ will re-de
 <hr />
 
 <h2>5. Message Ordering: Beyond "One Consumer per Queue"</h2>
-<p>RabbitMQ guarantees FIFO only within a single queue and a single consumer.</p>
+<p>RabbitMQ preserves message order within a queue, but concurrent consumers can cause the processing/effect order to differ.</p>
 <p>Let’s look at a real example:</p>
 
 <pre><code>Use case 1 → publishes message M1
@@ -166,7 +166,7 @@ Subscriber → runs use case 3 → publishes message M3</code></pre>
 <h4>Option 1: One Consumer per Queue (Strict FIFO)</h4>
 <p>The simplest solution: one queue + one consumer. For the next reasons:</p>
 <ul>
-  <li>RabbitMQ delivers messages in order.</li>
+  <li>Messages are delivered from the queue in order.</li>
   <li>Your consumer processes sequentially.</li>
   <li>Each message is acked only after successful processing.</li>
 </ul>
@@ -206,6 +206,37 @@ The logical flow of the process is preserved, regardless of the order in which m
 
 <p>This approach is very good option if you need one or multiple consumers per queue. It's pretty scalable, you can monitorize each queue independently and adjust resources as needed.</p>
 <p>In my experience, this model works well for a variety of use cases, especially when dealing with complex workflows that require high availability and fault tolerance.</p>
+
+<h4>Ordering with Multiple Consumers</h4>
+
+<p>
+If we need multiple consumers for scalability while preserving ordering
+for related messages, messages for the same entity must always be routed
+to the same queue.
+</p>
+
+<pre><code>
+Order 1 → M1 ─┐
+Order 1 → M2 ─┼→ Queue 1 → Consumer 1
+Order 1 → M3 ─┘
+
+Order 2 → M1 ─┐
+Order 2 → M2 ─┼→ Queue 2 → Consumer 2
+Order 2 → M3 ─┘
+</code></pre>
+
+<p>
+A deterministic routing key, such as <code>order_id</code>, can be used
+to route all messages for the same entity to the same queue. Because
+RabbitMQ queues are FIFO, this preserves the order of messages for that
+entity while allowing messages for different entities to be processed
+in parallel.
+</p>
+
+<p>
+To guarantee processing order within a queue, messages must be processed
+sequentially, for example by using a single active consumer.
+</p>
 
 <hr />
 
@@ -286,7 +317,7 @@ The logical flow of the process is preserved, regardless of the order in which m
     </tr>
     <tr>
       <td>Out-of-order processing</td>
-      <td>One consumer per queue or queue per side-effect</td>
+      <td>Single consumer, independent side-effects, or partitioning by entity</td>
     </tr>
     <tr>
       <td>Network failures</td>
