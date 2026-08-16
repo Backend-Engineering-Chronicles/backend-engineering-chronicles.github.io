@@ -161,7 +161,7 @@ Subscriber → runs use case 3 → publishes message M3</code></pre>
 <p>The observable order of effects breaks, generating bugs.</p>
 <p>This happens because ordering guarantees stop once messages are processed concurrently, even if RabbitMQ delivered them in order.</p>
 
-<h3>How to Fix It</h3>
+<h3>Message Ordering Strategies</h3>
 
 <h4>Option 1: One Consumer per Queue (Strict FIFO)</h4>
 <p>The simplest solution: one queue + one consumer. For the next reasons:</p>
@@ -207,7 +207,7 @@ The logical flow of the process is preserved, regardless of the order in which m
 <p>This approach is very good option if you need one or multiple consumers per queue. It's pretty scalable, you can monitorize each queue independently and adjust resources as needed.</p>
 <p>In my experience, this model works well for a variety of use cases, especially when dealing with complex workflows that require high availability and fault tolerance.</p>
 
-<h4>Ordering with Multiple Consumers</h4>
+<h4>Option 3:Ordering with Multiple Consumers</h4>
 
 <p>
 If we need multiple consumers for scalability while preserving ordering
