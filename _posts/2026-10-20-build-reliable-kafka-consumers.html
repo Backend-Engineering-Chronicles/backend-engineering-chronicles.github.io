@@ -6,21 +6,23 @@ tags: [kafka, distributed-systems, reliability, idempotency, microservices, arch
 
 # Building Reliable Kafka Consumers: Backpressure, Idempotency, Retries, and Failure Recovery
 
-Apache Kafka makes it possible to build scalable, event-driven systems. However, running Kafka in production introduces challenges that go far beyond publishing and consuming messages.
+I've been working with Kafka lately, exploring its concepts and going deeper into the parts that came up while dealing with some production cases.
 
-What happens when consumers cannot keep up with incoming events? What if a downstream API becomes unavailable? What happens when a consumer updates PostgreSQL successfully but crashes before committing its Kafka offset?
+On paper, it sounds simple: producers write events, consumers read them, everyone is happy. Then you connect a consumer to PostgreSQL, add a third-party API, deploy a few instances, and start running into lag, retries, duplicate deliveries, and offsets that don't quite line up with your business transactions.
 
-These are not exceptional situations. They are normal failure scenarios in distributed systems.
+Some of those situations showed up in real systems. Others are areas where I’m keen to keep learning and improving. This article is the result of that process: not a definitive guide, but a collection of patterns and trade-offs that helped me understand what was happening and why.
 
-Building reliable consumers requires more than increasing the number of partitions or adding retries. It requires controlling the flow of work, protecting downstream dependencies, handling duplicate deliveries, and designing explicit recovery mechanisms.
+What happens when consumers can't keep up? What if a downstream API starts timing out? What happens when a consumer updates PostgreSQL successfully but crashes before committing its Kafka offset?
 
-In this article, we'll explore the patterns and trade-offs involved in building reliable Kafka-based systems.
+Those aren't rare edge cases.
+
+In this article, we'll go through the patterns I've found most useful: backpressure, idempotency, retries, failure recovery, and where the outbox pattern fits into the picture. More importantly, we'll look at when each one makes sense and what trade-offs it brings.
 
 ## 1. Understanding Consumer Lag
 
-Consumer lag represents the difference between the latest available offset and the offset a consumer group has processed or committed.
+Consumer lag is the difference between the end of a partition's log and the consumer group's committed offset. It indicates how far behind the group is, but it does not necessarily reflect how much application processing is still pending.
 
-When producers publish events faster than consumers can process them, lag grows.
+When producers publish events faster than consumers can process them, the backlog grows. Simple in theory, stressful in practice.
 
 ```mermaid
 flowchart LR
@@ -33,19 +35,19 @@ flowchart LR
     style A fill:#fff0d5,stroke:#c28b27,color:#49330d
 ```
 
-Consider the following example:
+Consider a concrete example:
 
 - Producers publish 10,000 events per second.
 - Consumers can process 8,000 events per second.
 - The difference accumulates as lag.
 
-Increasing the number of consumers might help, but only if the downstream dependencies have enough capacity to handle the additional load.
+The first reaction is to add more consumers. It might help, but only if the downstream dependencies have enough capacity to handle the additional load.
 
 If PostgreSQL is already saturated or a third-party API is responding slowly, adding more consumers can increase contention, connection usage, and request failures.
 
 **The first step is to identify the bottleneck before changing the architecture.**
 
-Useful metrics include:
+Before touching anything, I try to look at a few numbers:
 
 - Consumer lag by consumer group and partition.
 - Event processing latency, including p50, p95, and p99.
@@ -54,79 +56,133 @@ Useful metrics include:
 - Consumer rebalance frequency and processing failures.
 - Incoming event rate compared with successful processing throughput.
 
-Consumer lag is a symptom, not a root cause.
+Consumer lag is a symptom, not a root cause. Basically it tells you that something is behind, not why.
 
 ## 2. Backpressure: Controlling the Flow of Work
 
-Backpressure is the mechanism by which a system prevents incoming work from overwhelming its processing capacity.
+Backpressure is the mechanism by which a system prevents incoming work from overwhelming its processing capacity. The name sounds fancy, but the idea is simple: if you can't process more, don't accept more.
 
-A common mistake is to assume that backpressure simply means reducing the number of consumers. In practice, it can involve several complementary strategies.
+It's easy to assume that backpressure simply means reducing the number of consumers. In practice, it involves several complementary strategies.
 
-### 2.1 Limit concurrency and in-flight messages
+### 2.1 Limit concurrency and control message intake
 
-A consumer can receive more messages than it can safely process at once.
+A consumer can receive messages faster than it can process them. If hundreds of messages trigger database operations simultaneously, they may exhaust the connection pool, increase latency, and cause timeouts.
 
-For example, allowing hundreds of concurrent operations against a database with a limited connection pool may increase contention and latency instead of improving throughput.
+There are two complementary ways to control this workload:
 
-A safer approach is to introduce explicit limits:
+- **Limit message intake:** Control how many records the consumer receives in each batch. For example, Kafka's consumer provides `max.poll.records` to limit the number of records returned by each `poll()` call. The configuration depends on the Kafka client library.
+- **Limit concurrency:** Control how many messages the application processes simultaneously, using a fixed number of workers or another concurrency control mechanism.
 
-- Maximum number of messages being processed concurrently.
-- Maximum number of outstanding downstream requests.
-- Bounded internal queues.
-- Controlled batch sizes.
+For example, a consumer might receive up to 100 records per poll and process only 10 at a time. The remaining records wait until workers become available.
 
-```mermaid
-flowchart TD
-    K[Kafka messages] --> Q[Bounded work queue]
-    Q --> L[Concurrency limit]
-    L --> D[(Database)]
-    Q -. queue full .-> P[Pause consumption]
-    P --> Q
-```
+However, limiting the batch size does not prevent pending work from accumulating if the application continues receiving records faster than it can process them. Keep pending work bounded and use Kafka's partition pause/resume mechanism when processing capacity is exhausted.
 
-A bounded queue prevents the consumer from accumulating unlimited work in memory. When the queue reaches its capacity, the consumer can stop accepting additional work temporarily.
-
-The important distinction is that **batch size, concurrency, and queue capacity control different things**.
-
-A batch of 20 messages could be processed sequentially or with 20 concurrent operations. Those choices have very different effects on downstream load.
+Start with conservative limits and adjust them based on throughput, processing latency, and downstream resource usage.
 
 ### 2.2 Pause and resume Kafka partitions
 
-Kafka consumers support pausing and resuming partitions.
+Limiting concurrency prevents too much work from running simultaneously, but a consumer can still accumulate pending messages while its workers are busy.
 
-This is useful when a consumer has enough pending work or when a downstream dependency is temporarily overloaded.
+Kafka supports pausing and resuming assigned partitions, allowing the application to stop receiving more records temporarily when processing capacity is exhausted.
 
-However, pausing consumption must be implemented carefully. The application still needs to manage polling, heartbeats, and offset commits correctly. Long processing intervals without appropriate polling can trigger consumer group rebalances.
+For example, a consumer can pause its partitions when its processing queue reaches a predefined limit and resume them when enough capacity becomes available.
 
-Pausing is a flow-control mechanism, not a way to increase processing capacity.
+The exact API depends on the Kafka client library. The general flow is:
+
+```typescript
+// Pseudocode: adapt to your Kafka client library.
+if (processingQueueIsFull()) {
+  pauseAssignedPartitions();
+}
+
+if (processingQueueHasCapacity()) {
+  resumeAssignedPartitions();
+}
+```
+
+Pausing does not stop Kafka from retaining messages in the topic. It temporarily stops delivery from the paused partitions to that consumer.
+
+The consumer must still poll or run its event loop as required by the client library and manage offset commits correctly. Otherwise, it may lose its group membership or trigger a rebalance.
 
 ### 2.3 Apply rate limiting
 
-Concurrency limits control how many operations can be active at once. Rate limiting controls how many operations can start within a given period.
+Concurrency limits control how many operations run simultaneously. Rate limiting controls how many operations can start within a given period.
 
-Suppose an external API allows a maximum of 500 requests per second. Even if the consumer can process 2,000 events per second, sending requests at that rate may trigger throttling.
+This matters when a consumer calls an external service with a strict request quota. For example, an API may allow only 500 requests per second. A consumer processing 2,000 messages per second could exceed that quota, even if its concurrency is limited.
 
-A token bucket or leaky bucket algorithm can regulate the request rate.
+A rate limiter can regulate outgoing requests to respect the provider's limit. Algorithms such as token bucket and leaky bucket are commonly used for this purpose.
 
-Rate limits should account for the provider's quotas, shared usage across application instances, and any tenant-specific limits.
+When multiple consumer instances share the same API quota, the rate limit must account for their combined traffic. Otherwise, each instance may respect its individual limit while the application exceeds the provider's global limit.
 
 ### 2.4 Use batching to improve throughput
 
-Batching can reduce the overhead of repeated database operations.
+So far, the focus has been on controlling how much work the consumer processes and how quickly it sends requests. Another way to improve throughput is to reduce the overhead of repeated operations.
 
-Instead of inserting 100 events with 100 separate database round trips, the consumer might insert them using a single batch operation.
+For example, instead of inserting 100 events using 100 separate database round trips, the consumer can collect them and insert them using a single batch operation.
 
-This can improve throughput, but larger batches may increase processing latency, memory usage, and the amount of work affected by a failure.
+```sql
+INSERT INTO processed_events (consumer_name, event_id)
+VALUES
+    ('order-projection', '00000000-0000-0000-0000-000000000001'),
+    ('order-projection', '00000000-0000-0000-0000-000000000002'),
+    ('order-projection', '00000000-0000-0000-0000-000000000003')
+ON CONFLICT DO NOTHING;
+```
 
-Batching should be tuned against both throughput and latency objectives.
+This reduces the number of database round trips, although the actual benefit depends on the database, driver, and workload.
 
-## 3. Protecting Downstream Dependencies
+Larger batches can improve throughput, but they may also increase processing latency, memory usage, and the amount of work affected by a failure.
 
-Kafka consumers frequently depend on databases, HTTP APIs, payment providers, and other microservices.
+Batch size should therefore be tuned against both throughput and latency requirements.
+
+### Summary
+
+Each backpressure strategy controls a different aspect of the workload:
+
+| Strategy | What it controls | When to use it |
+|---|---|---|
+| **Limit concurrency** | How many messages are processed simultaneously. | When the database or another dependency cannot handle too many concurrent operations. |
+| **Control message intake** | How many messages are returned by each `poll()` call. | When you want to limit how many messages the consumer receives at once. |
+| **Pause/resume partitions** | When to temporarily stop receiving messages. | When pending work accumulates or a downstream system becomes overloaded. |
+| **Rate limiting** | How many operations can start within a given period. | When an external API enforces a request quota. |
+| **Batching** | How many operations are grouped into a single request. | When you want to reduce database round trips and improve throughput. |
+
+Not every consumer needs all these strategies. Choose the ones that address your actual bottlenecks and resource constraints.
+
+## 3. Scaling Consumers Without Overloading Dependencies
+
+Backpressure helps up to a point. When lag keeps growing, the next question is whether you can simply add more consumers.
+
+Scaling Kafka consumers looks easy on paper: add more instances. In practice, you're usually moving the bottleneck somewhere else.
+
+Kafka consumers can scale horizontally, but scaling is constrained by partition count and downstream capacity.
+
+Adding more consumer instances can increase parallelism up to the number of partitions assigned to the group. Beyond that, extra instances may remain idle.
+
+Even before reaching that limit, the database or external API may become the bottleneck.
+
+A practical scaling strategy should:
+
+1. Measure processing throughput and latency.
+2. Identify the saturated dependency.
+3. Apply concurrency and rate limits where appropriate.
+4. Optimize expensive database operations or external calls.
+5. Increase partitions or consumer instances only when additional parallelism is useful.
+6. Monitor lag and recovery time after traffic peaks.
+
+A temporary increase in consumer lag is not necessarily a problem. If incoming traffic returns to normal and the consumer can process messages faster than new ones arrive, the backlog will eventually decrease.
+
+What matters is how long it takes to catch up and whether messages are processed within the expected time limits.
+
+## 4. Protecting Downstream Dependencies
+
+Of course, scaling is only half the story. Adding consumers is risky if they all keep hammering a dependency that is already struggling.
+
+Sooner or later, every consumer depends on something that can fail: a database, an HTTP API, a payment provider, another microservice.
 
 When a dependency becomes slow or unavailable, the consumer needs to avoid amplifying the failure.
 
-### 3.1 Circuit breaker
+### 4.1 Circuit breaker
 
 A circuit breaker monitors failures and temporarily prevents calls to an unhealthy dependency.
 
@@ -158,7 +214,7 @@ The application still needs a policy:
 
 The right choice depends on whether the event can safely wait, whether ordering matters, and how much retry delay the business can tolerate.
 
-### 3.2 Respect rate limits and timeouts
+### 4.2 Respect rate limits and timeouts
 
 A provider may return `429 Too Many Requests` and include a `Retry-After` header.
 
@@ -166,7 +222,7 @@ When available, that information should inform the retry policy. Repeatedly retr
 
 Requests should also have explicit timeouts. Without them, slow calls can occupy threads, connections, and in-flight capacity indefinitely.
 
-### 3.3 Exponential backoff and jitter
+### 4.3 Exponential backoff and jitter
 
 Exponential backoff increases the delay between retry attempts.
 
@@ -184,11 +240,11 @@ Imagine 1,000 consumers retrying an unavailable API. Without jitter, many of the
 
 Backoff reduces retry frequency; jitter reduces synchronization.
 
-Retries should be bounded or governed by an explicit retry policy. They should distinguish transient failures from permanent errors, and they must not bypass idempotency safeguards.
+Retries should be bounded or governed by an explicit retry policy. They should distinguish transient failures from permanent errors, and they must not bypass idempotency safeguards (we'll get to that in section 6).
 
-## 4. Delivery Guarantees: At-Most-Once, At-Least-Once, and Exactly-Once
+## 5. Delivery Guarantees: At-Most-Once, At-Least-Once, and Exactly-Once
 
-Before implementing idempotency, it is important to understand the delivery guarantees.
+Before we talk about idempotency, it helps to be precise about delivery guarantees.
 
 ### At-most-once
 
@@ -196,7 +252,7 @@ A message is processed zero or one times. A failure can cause work to be lost.
 
 ### At-least-once
 
-A message is not intentionally discarded before successful processing, but it can be delivered or processed multiple times.
+A message may be processed more than once. To avoid losing work, the consumer must only commit its offset after the required processing has succeeded.
 
 ### Exactly-once
 
@@ -210,15 +266,11 @@ For most consumers that update an external database, **at-least-once delivery co
 
 The objective is not necessarily to prevent every duplicate delivery. It is to make duplicate deliveries safe.
 
-## 5. Idempotency: Making Duplicate Processing Safe
+## 6. Idempotency: Making Duplicate Processing Safe
 
 An operation is idempotent when repeating it produces the same intended result as performing it once.
 
-Formally:
-
-`f(f(x)) = f(x)`
-
-In a distributed system, duplicate delivery can occur for several reasons:
+In distributed systems, duplicate delivery can occur for several reasons:
 
 - A consumer crashes after updating the database but before committing the Kafka offset.
 - A consumer group rebalance causes previously processed records to be delivered again.
@@ -230,23 +282,21 @@ The key principle is:
 
 **Idempotency must be enforced at the business-effect boundary, not merely at the message transport boundary.**
 
-### 5.1 Use a stable event ID
+### 6.1 Use a stable event ID
 
 Every logical event should have a stable identifier, such as `event_id`.
 
-That identifier should remain the same across retries of the same logical event.
+That identifier must remain the same across retries of the same logical event. Otherwise, duplicate deliveries will look like new events.
 
-Do not generate a new ID for every delivery attempt. Otherwise, duplicate deliveries will look like new events.
+A Kafka offset identifies a record within a particular topic partition, but a domain event ID is generally more useful when the same event may be republished or transported through different systems.
 
-A Kafka offset can identify a record within a particular topic partition, but a domain event ID is generally more useful when the same event may be republished or transported through different systems.
+A stable event ID can also support application-specific idempotency rules, deduplication, auditing, and tracing an event across services.
 
-### 5.2 Use a database-enforced uniqueness constraint
+### 6.2 Use a database-enforced uniqueness constraint
 
-An application-level check such as "Have I processed this event already?" followed by an insert is not sufficient by itself.
+When a consumer needs to prevent duplicate database updates, the database should enforce uniqueness rather than relying on an application-level check.
 
-Two concurrent consumers could both check, observe that the event is absent, and proceed.
-
-The database should enforce uniqueness.
+Two concurrent executions could both check whether an event exists, find nothing, and proceed. A unique constraint prevents both from successfully claiming the same event.
 
 For PostgreSQL:
 
@@ -254,7 +304,6 @@ For PostgreSQL:
 CREATE TABLE processed_events (
     consumer_name TEXT NOT NULL,
     event_id UUID NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (consumer_name, event_id)
 );
 ```
@@ -274,217 +323,74 @@ If the statement returns an ID, the event was newly claimed. If it returns no ro
 
 The claim must be part of the same database transaction as the business update.
 
-### 5.3 Make the idempotency record and business update atomic
+### 6.3 Choose an idempotency strategy
 
-A safe processing flow looks like this:
+The right approach depends on the business effect being protected and where that effect occurs.
 
-```mermaid
-sequenceDiagram
-    participant K as Kafka
-    participant C as Consumer
-    participant DB as PostgreSQL
+Common strategies include:
 
-    K->>C: Deliver event
-    C->>DB: Begin transaction
-    C->>DB: Insert idempotency key
-    alt New event
-        C->>DB: Apply business update
-        C->>DB: Commit transaction
-    else Duplicate event
-        C->>DB: Skip business update
-        C->>DB: Commit transaction
-    end
-    DB-->>C: Transaction committed
-    C->>K: Commit offset
-```
+- **Database updates:** Record the event ID and apply the business update in the same transaction. If the event is a duplicate, skip the update.
+- **State transitions:** Use conditional updates or business rules to prevent invalid or repeated transitions, such as shipping an order that has already been shipped.
+- **External API calls:** Use an idempotency key supported by the provider to prevent duplicate operations, such as charging a payment twice.
 
-Consider the failure windows:
+For database updates, commit the transaction before committing the Kafka offset. If the consumer crashes after the database transaction succeeds but before the offset is committed, Kafka may deliver the event again. The idempotency record allows the consumer to skip the business update.
 
-**Failure before the database transaction commits**
+A database transaction cannot make an external API call atomic with a database update. External side effects require their own safeguards.
 
-The transaction rolls back, including the idempotency record. The message can be retried and processed normally.
+The goal is not simply to detect duplicate messages, but to ensure that processing the same logical event multiple times does not repeat its business effects.
 
-**Failure after the database transaction commits but before the Kafka offset is committed**
+## 7. Failure Recovery: Retries, Poison Messages, and Dead-Letter Queues
 
-Kafka may deliver the message again. The unique constraint identifies the duplicate, and the consumer skips the business mutation.
+Not every failure should be handled in the same way. Some errors are temporary and may disappear on retry. Others are permanent and will never succeed, no matter how many times the consumer tries.
 
-**Offset committed before the database transaction commits**
+A robust recovery strategy starts by classifying the failure:
 
-This is dangerous. If the consumer crashes after committing the offset but before persisting the business update, the message may not be delivered again, and the business effect can be lost.
+- **Transient failures:** Temporary network errors or service outages. Retry with backoff and jitter.
+- **Throttling:** The downstream service is limiting requests. Respect its retry guidance and rate limits.
+- **Permanent failures:** Invalid payloads, incompatible schemas, or unrecoverable validation errors. Stop retrying and route the message to a dead-letter topic or another explicit failure workflow.
+- **Ambiguous outcomes:** The downstream operation may have succeeded, but the consumer did not receive confirmation. Verify the outcome or use the provider's idempotency mechanism before retrying.
 
-Therefore, for a typical at-least-once consumer, commit the database transaction before committing the Kafka offset.
+### 7.1 Separate retries from normal processing
 
-For concurrent processing within a partition, offset commits must also respect processing completion order. A later message must not cause the committed offset to advance past an earlier message that is still unprocessed.
+Retry topics can separate failed messages from the main processing path, allowing them to be retried later without blocking other messages. For example, if a downstream service is temporarily unavailable, a message can be routed to a retry topic and processed again after a delay. The retry mechanism must control when the message becomes eligible for another attempt, since Kafka topics do not provide delayed delivery by themselves.
 
-### 5.4 Idempotency is more than deduplication
+However, this approach can change event ordering. If a message fails and is moved to a retry topic, later messages may be processed first. If events for the same entity must be processed in order, the retry strategy must preserve that ordering or explicitly handle out-of-order events.
 
-Not every business operation can be made safe simply by storing an event ID.
+Retries should also be bounded. After a configured number of attempts, a message that continues to fail should be routed to a defined failure path, such as a dead-letter topic, rather than being retried indefinitely.
 
-For example, applying an event that sets an order's status to `SHIPPED` may be naturally idempotent if the transition is properly guarded.
+### 7.2 Handle poison messages explicitly
 
-An operation that increments an account balance by 100 is not naturally idempotent. Repeating it changes the balance twice.
+A poison message is one that repeatedly fails processing because of its content or another persistent problem.
 
-The implementation must protect the actual business effect, using techniques such as:
+A dead-letter topic provides a place to store messages that cannot be processed successfully. Include enough context to investigate the failure, such as the original topic, partition, offset, error details, and retry history, while avoiding sensitive data.
 
-- Unique event IDs and transactional processing records.
-- Conditional state transitions.
-- Unique business constraints.
-- Idempotency keys supported by downstream APIs.
-- Domain-specific checks preventing duplicate reservations, payments, or shipments.
+A dead-letter topic is not a complete recovery strategy on its own. You also need monitoring, alerting, an investigation process, and a safe way to replay messages after the underlying problem has been fixed.
 
-For financial operations, a stable idempotency key should identify the logical payment operation, not the HTTP request attempt.
+### 7.3 Make recovery safe
 
-## 6. The Transactional Outbox Pattern
+Before replaying a failed message, determine whether its business effect has already occurred. This is especially important when a downstream API times out: the operation may have succeeded even though the consumer never received the response.
 
-Idempotent consumers address duplicate processing, but another failure can occur before an event reaches Kafka.
+Use the provider's idempotency mechanism or another reliable way to verify the operation's status. If the outcome remains uncertain, keep the operation pending for reconciliation rather than blindly repeating an irreversible action.
 
-Imagine an Orders service that updates PostgreSQL and then publishes `OrderCreated` to Kafka.
+Idempotent consumers make retries and replays safer because processing the same logical event again does not repeat its business effects.
 
-If the database commit succeeds but publishing fails, the order exists, but downstream services never receive the event.
+### 7.4 Plan for backlog recovery
 
-Reversing the order is not safe either: the event could be published while the database transaction later fails.
+After an incident, consumers may return to a large backlog. Restoring the service does not guarantee that the backlog will clear quickly.
 
-The Transactional Outbox pattern solves this dual-write problem.
+Check how much data remains, how quickly consumers are processing it, and whether Kafka retention gives you enough time to catch up. Temporary scaling can help if the downstream systems can handle the extra load.
 
-### 6.1 Write the business change and event together
+Measure recovery using consumer lag and the time required to return to normal. If messages need to be replayed, do so deliberately and monitor the operation.
 
-Within one PostgreSQL transaction, the service:
+The goal is not to retry every failure. It is to recover from temporary problems, isolate messages that cannot be processed, and make every retry or replay a controlled and observable operation.
 
-1. Persists the business change.
-2. Inserts the corresponding event into an outbox table.
-3. Commits the transaction.
+## 8. Final Thoughts
 
-A separate publisher or CDC process subsequently publishes the outbox events to Kafka.
+These are some of the things I've learned recently while exploring how to build more reliable Kafka consumers. I hope you find them as useful and interesting as I did.
 
-```mermaid
-flowchart TD
-    C[Business command] --> T[PostgreSQL transaction]
-    T --> B[Update business tables]
-    T --> O[Insert outbox event]
-    B --> COMMIT[Commit transaction]
-    O --> COMMIT
-    COMMIT --> PUB[Outbox publisher or CDC]
-    PUB --> K[Kafka]
-    K --> CON[Consumer]
-    CON --> IDEM[Idempotent processing]
-```
+Building reliable consumers isn't just about processing messages faster. It's about handling backpressure, scaling responsibly, making processing idempotent, and recovering from failures safely.
 
-The business update and outbox event are committed atomically.
-
-If the transaction fails, neither becomes visible as a committed change. If it succeeds, the event remains available for publication.
-
-### 6.2 The outbox publisher can still publish duplicates
-
-Suppose the publisher sends an event to Kafka successfully but crashes before marking the outbox record as published.
-
-After restarting, it may publish the same event again.
-
-That is expected in an at-least-once publication strategy.
-
-The outbox should assign a stable event ID, and downstream consumers should use that ID for idempotency.
-
-The Outbox pattern addresses reliable event publication. It does not eliminate the need for consumer-side duplicate protection.
-
-## 7. Poison Messages, Retry Topics, and Dead-Letter Queues
-
-Not every failed event will succeed after another attempt.
-
-A temporary network error may recover quickly. A malformed payload, incompatible schema, or permanent business validation error may never succeed.
-
-Repeatedly retrying such a message can block progress or consume unnecessary resources.
-
-A robust strategy distinguishes between:
-
-- **Transient failures:** retry with backoff and jitter.
-- **Throttling:** respect provider limits and retry guidance.
-- **Permanent failures:** route to a dead-letter topic or another explicit terminal workflow.
-- **Ambiguous business outcomes:** reconcile the operation before retrying an irreversible action.
-
-Retry topics can help separate delayed retries from the main processing path.
-
-However, moving a failed message to a retry topic and continuing with later messages can change the effective ordering of events. If per-entity ordering is a business requirement, the retry architecture must preserve that requirement or explicitly define how out-of-order events are handled.
-
-Dead-letter handling should include observability, alerting, investigation procedures, and a safe replay mechanism. A dead-letter topic is not a substitute for deciding what a failed business operation means.
-
-## 8. Scaling Consumers Without Overloading Dependencies
-
-Kafka consumers can scale horizontally, but scaling is constrained by partition count and downstream capacity.
-
-Adding more consumer instances can increase parallelism up to the number of partitions assigned to the group. Beyond that, extra instances may remain idle.
-
-Even before reaching that limit, the database or external API may become the bottleneck.
-
-A useful capacity model is:
-
-`Effective throughput ≤ min(Kafka capacity, consumer capacity, downstream capacity)`
-
-The exact relationship depends on batching, concurrency, partition distribution, and workload characteristics, but the principle is straightforward: the slowest constrained component limits the sustainable throughput of the complete pipeline.
-
-A practical scaling strategy should:
-
-1. Measure processing throughput and latency.
-2. Identify the saturated dependency.
-3. Apply concurrency and rate limits where appropriate.
-4. Optimize expensive database operations or external calls.
-5. Increase partitions or consumer instances only when additional parallelism is useful.
-6. Monitor lag and recovery time after traffic peaks.
-
-A growing lag is not always an immediate failure. If the system has enough retention and can process faster than the incoming rate after a peak, it may recover naturally.
-
-The critical question is whether the backlog is bounded and recoverable within the business's latency requirements.
-
-## 9. Putting It All Together
-
-Consider an order-processing pipeline that consumes Kafka events, updates PostgreSQL, and calls an external API.
-
-A resilient design might combine:
-
-- Stable event IDs and idempotent database transactions.
-- Transactional Outbox for reliable publication from the source service.
-- Bounded concurrency and queues.
-- Rate limiting and circuit breakers for external dependencies.
-- Exponential backoff with jitter for transient failures.
-- Controlled offset commits.
-- Retry topics and dead-letter handling where appropriate.
-- Metrics for lag, processing latency, retries, duplicate suppression, and downstream health.
-
-These mechanisms solve different problems and should not be treated as interchangeable.
-
-| Pattern | Primary responsibility |
-|---|---|
-| Backpressure | Prevent overload by controlling the flow of work |
-| Rate limiting | Control the rate of operations |
-| Circuit breaker | Stop calls to an unhealthy dependency temporarily |
-| Exponential backoff + jitter | Reduce retry pressure and synchronized retry bursts |
-| Idempotent consumer | Make duplicate deliveries safe |
-| Transactional Outbox | Reliably persist business changes and events together |
-| Kafka transactions | Atomically coordinate supported Kafka operations |
-| Retry and dead-letter topics | Manage failures that cannot be processed immediately |
-
-The strongest design is not necessarily the one with the most patterns. It is the one that identifies the relevant failure modes and applies the smallest set of mechanisms that provide the required guarantees.
-
-## 10. Final Thoughts
-
-Reliable event-driven systems are designed around the assumption that components can fail independently.
-
-Messages may be delivered more than once. Network timeouts may leave operations in an unknown state. Dependencies may become temporarily unavailable. Consumers may restart while processing. Backlogs may grow faster than they can be drained.
-
-A robust Kafka architecture makes those situations explicit rather than relying on the happy path.
-
-The most important principles are:
-
-1. Measure before scaling.
-2. Control the flow of work instead of allowing unbounded accumulation.
-3. Protect downstream dependencies from overload.
-4. Treat retries as a source of additional load.
-5. Make business effects idempotent.
-6. Commit offsets only when the corresponding work is safely complete.
-7. Use transactional boundaries and the Outbox pattern to close dual-write gaps.
-8. Define recovery, replay, ordering, and failure-handling policies explicitly.
-
-Kafka provides powerful primitives for building distributed systems, but reliability emerges from how those primitives interact with databases, APIs, and business logic.
-
-**The goal is not to prevent every failure. It is to make failures recoverable, duplicate delivery safe, and system behavior predictable under load.**
+There's always more to learn, but understanding these fundamentals is a great place to start.
 
 ---
 
