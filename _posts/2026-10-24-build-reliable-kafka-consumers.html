@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Building Reliable Kafka Consumers: Backpressure, Idempotency, Retries, and Failure Recovery"
-description: "A practical guide to building resilient event-driven systems with Apache Kafka, covering consumer lag, backpressure, circuit breakers, idempotent processing, transactional outbox, and delivery guarantees."
+description: "A practical guide to building resilient event-driven systems with Apache Kafka, covering consumer lag, backpressure, circuit breakers, idempotent processing, and delivery guarantees."
 tags: [kafka, distributed-systems, reliability, idempotency, microservices, architecture]
 date: 2026-10-24
 timezone: Europe/Madrid
@@ -20,7 +20,7 @@ background: "/img/posts/01.jpg"
 
 <p>Those aren't rare edge cases.</p>
 
-<p>In this article, we'll go through the patterns I've found most useful: backpressure, idempotency, retries, failure recovery, and where the outbox pattern fits into the picture. More importantly, we'll look at when each one makes sense and what trade-offs it brings.</p>
+<p>In this article, we'll go through the patterns I've found most useful: backpressure, idempotency, retries, failure recovery, etc. More importantly, we'll look at when each one makes sense and what trade-offs it brings.</p>
 
 <h2>1. Understanding Consumer Lag</h2>
 
@@ -439,5 +439,4 @@ RETURNING event_id;</code></pre>
   <li><a href="https://kafka.apache.org/documentation/#semantics" target="_blank" rel="noopener">Apache Kafka: Message Delivery Semantics</a></li>
   <li><a href="https://kafka.apache.org/documentation/#consumerconfigs" target="_blank" rel="noopener">Apache Kafka: Consumer Configuration</a></li>
   <li><a href="https://kafka.apache.org/documentation/#producerconfigs" target="_blank" rel="noopener">Apache Kafka: Producer Configuration</a></li>
-  <li><a href="https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html" target="_blank" rel="noopener">AWS Prescriptive Guidance: Transactional Outbox Pattern</a></li>
 </ul>
